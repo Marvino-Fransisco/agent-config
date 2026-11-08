@@ -39,7 +39,7 @@ const oneLine = (text: string) => safeText(text).replace(/\s+/g, " ").trim();
 
 function meter(ratio: number, width: number): string {
   const filled = Math.round(Math.max(0, Math.min(1, ratio)) * Math.max(1, width));
-  return BLUE("█".repeat(filled)) + MUTED("░".repeat(Math.max(0, width - filled)));
+  return BLUE("▰".repeat(filled)) + MUTED("▱".repeat(Math.max(0, width - filled)));
 }
 
 export function similarityMeter(similarity: number): string {
@@ -83,36 +83,81 @@ export function formatForAgent(rows: MemoryRow[], empty: string): string {
   ].join("\n");
 }
 
+function sectionCard(title: string, lines: string[], width: number): string[] {
+  const inner = Math.max(1, width - 2);
+  const heading = truncateToWidth(`─ ${title} `, inner, "…");
+  return [
+    BLUE(`╭${heading}${"─".repeat(Math.max(0, inner - visibleWidth(heading)))}╮`),
+    ...lines.map((line) => `${BLUE("│")} ${truncateToWidth(line, Math.max(1, width - 4), "…", true)} ${BLUE("│")}`),
+    BLUE(`╰${"─".repeat(inner)}╯`),
+  ];
+}
+
+function emptyCard(title: string, description: string, action: string, width: number): string[] {
+  const textWidth = Math.max(1, width - 4);
+  return sectionCard(title, [
+    ...wrapTextWithAnsi(description, textWidth).map(BRIGHT),
+    "",
+    ...wrapTextWithAnsi(action, textWidth).map(MUTED),
+  ], width);
+}
+
 export function renderStats(stats: MemoryStats, width: number, reindexKey = "Ctrl+R"): string[] {
-  if (!stats.total && !stats.trash) return ["", `  ${MUTED("◌")}  ${BLUE("No memories yet")}`, `     ${MUTED("Save one with /memory save global|project <text>")}`];
+  if (!stats.total && !stats.trash) return emptyCard("◇ No memories yet", "Saved memories will appear here.", "Save one with /memory save global|project <text>", width);
   const unindexed = stats.total - stats.indexed;
-  const cell = Math.max(11, Math.floor(width / 4));
   const cards: Array<[number, string, (text: string) => string]> = [
     [stats.total, "memories", BRIGHT], [stats.indexed, "indexed", OK],
     [unindexed, "unindexed", unindexed ? WARN : MUTED], [stats.trash, "in trash", stats.trash ? DANGER : MUTED],
   ];
-  const bar = Math.max(8, width - 22);
+  let columns = 1;
+  if (width >= 62) columns = 4;
+  else if (width >= 30) columns = 2;
+  const cell = Math.max(5, Math.floor((width - (columns - 1) * 2) / columns));
+  const summary: string[] = [];
+  for (let start = 0; start < cards.length; start += columns) {
+    const group = cards.slice(start, start + columns).map(([value, label, paint]) => [
+      BLUE(`╭${"─".repeat(cell - 2)}╮`),
+      `${BLUE("│")} ${pad(BOLD(paint(truncateToWidth(String(value), cell - 4, "…"))), cell - 4)} ${BLUE("│")}`,
+      `${BLUE("│")} ${pad(MUTED(truncateToWidth(label, cell - 4, "…")), cell - 4)} ${BLUE("│")}`,
+      BLUE(`╰${"─".repeat(cell - 2)}╯`),
+    ]);
+    if (start) summary.push("");
+    for (let row = 0; row < 4; row++) summary.push(group.map((card) => card[row]).join("  "));
+  }
+  const bar = Math.max(1, Math.min(28, width - 26));
   const kinds = new Map<string, number>();
   for (const group of stats.groups) kinds.set(group.kind, (kinds.get(group.kind) ?? 0) + group.total);
   const ranked = [...kinds.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8);
-  const kindWidth = Math.min(14, Math.max(4, ...ranked.map(([kind]) => kind.length)));
+  const kindWidth = Math.min(14, Math.max(7, ...ranked.map(([kind]) => visibleWidth(safeText(kind)))));
+  const distributionWidth = Math.max(1, Math.min(28, width - kindWidth - String(stats.total).length - 9));
   const top = ranked[0]?.[1] ?? 1;
   const lines = [
-    cards.map(([value, , paint]) => pad(BOLD(paint(String(value))), cell)).join(""),
-    cards.map(([, label]) => pad(MUTED(label), cell)).join(""),
+    ...summary,
     "",
-    `${meter(stats.total ? stats.indexed / stats.total : 0, bar)} ${BRIGHT(percent(stats.total ? stats.indexed / stats.total : 0))} ${MUTED("search coverage")}`,
+    ...sectionCard("◎ SEARCH COVERAGE", [
+      `${meter(stats.total ? stats.indexed / stats.total : 0, bar)} ${BRIGHT(percent(stats.total ? stats.indexed / stats.total : 0))} ${MUTED("search coverage")}`,
+    ], width),
     "",
-    BRIGHT("◈ SCOPE"),
-    `${BRIGHT("◆")} ${pad(BLUE("global"), kindWidth)} ${meter(stats.total ? stats.global / stats.total : 0, bar - 4)} ${BRIGHT(String(stats.global))}`,
-    `${BLUE("◇")} ${pad(BLUE("project"), kindWidth)} ${meter(stats.total ? stats.project / stats.total : 0, bar - 4)} ${BRIGHT(String(stats.project))}`,
+    ...sectionCard("◈ SCOPE", [
+      `${BRIGHT("◆")} ${pad(BLUE("global"), kindWidth)} ${meter(stats.total ? stats.global / stats.total : 0, distributionWidth)} ${BRIGHT(String(stats.global))}`,
+      "",
+      `${BLUE("◇")} ${pad(BLUE("project"), kindWidth)} ${meter(stats.total ? stats.project / stats.total : 0, distributionWidth)} ${BRIGHT(String(stats.project))}`,
+    ], width),
   ];
   if (ranked.length) {
-    lines.push("", BRIGHT("☰ KINDS"));
-    for (const [kind, total] of ranked) lines.push(`  ${pad(BLUE(truncateToWidth(safeText(kind), kindWidth, "…")), kindWidth)} ${meter(total / top, bar - 4)} ${BRIGHT(String(total))}`);
+    const kinds: string[] = [];
+    for (const [index, [kind, total]] of ranked.entries()) {
+      if (index) kinds.push("");
+      kinds.push(`  ${pad(BLUE(truncateToWidth(safeText(kind), kindWidth, "…")), kindWidth)} ${meter(total / top, distributionWidth)} ${BRIGHT(String(total))}`);
+    }
+    lines.push("", ...sectionCard("☰ KINDS", kinds, width));
   }
-  lines.push("", MUTED(`⚙ ${stats.model} · ${stats.dimensions}d · exact cosine · top ${stats.topK} · min match ${percent(stats.minSimilarity)}`));
-  if (unindexed) lines.push(WARN(`⚠ ${unindexed} memor${unindexed === 1 ? "y is" : "ies are"} not searchable · ${reindexKey} to reindex`));
+  lines.push("", ...sectionCard("⚙ RETRIEVAL", [
+    BLUE(oneLine(stats.model)),
+    MUTED(`${stats.dimensions}d · exact cosine`),
+    MUTED(`top ${stats.topK} · min match ${percent(stats.minSimilarity)}`),
+  ], width));
+  if (unindexed) lines.push("", WARN(`⚠ ${unindexed} memor${unindexed === 1 ? "y is" : "ies are"} not searchable · ${reindexKey} to reindex`));
   return lines;
 }
 
@@ -166,6 +211,7 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
   let output = "";
   let failed = false;
   let loading = false;
+  let hasSubmitted = false;
   let status = "";
   let diagnostics = "";
   let selected = -1;
@@ -184,6 +230,9 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
   let frame = 0;
   let spinner: ReturnType<typeof setInterval> | undefined;
   let targets: Array<Line["target"]> = [];
+  let separators: number[] = [];
+  let contentStart = 0;
+  let contentHeight = 0;
   let input = makeInput();
 
   function makeInput(): Input {
@@ -212,8 +261,9 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
   function submit(value: string): void {
     if (selected >= 0 && rows[selected]) { openDetail(rows[selected]!); return; }
     const query = value.trim();
-    if ((mode === "search" || mode === "debug" || mode === "sql") && !query) { status = mode === "sql" ? "Enter a SQL query." : "Enter a search query."; tui.requestRender(); return; }
+    if ((mode === "search" || mode === "debug" || mode === "sql") && !query) { tui.requestRender(); return; }
     const current = ++sequence;
+    hasSubmitted = true;
     const active = mode;
     rows = [];
     stats = undefined;
@@ -308,9 +358,10 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
     output = "";
     diagnostics = "";
     failed = false;
+    hasSubmitted = false;
     selected = -1;
     offset = 0;
-    status = mode === "search" || mode === "debug" ? "Type a query, then press Enter · sent to Google" : message();
+    status = "";
   }
 
   function rowLine(row: MemoryRow, index: number, width: number, idWidth: number, kindWidth: number): string {
@@ -369,7 +420,15 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
     if (confirming) return keys([["y", "confirm"], ["n", "cancel"], ["esc", "close"]]);
     if (detail) return keys(mode === "trash" ? [["↑↓", "scroll"], ["^R", "restore"], ["^D", "purge"], ["⌫", "back"], ["esc", "close"]] : [["↑↓", "scroll"], ["^H", "history"], ["^D", "trash"], ["⌫", "back"], ["esc", "close"]]);
     if (mode === "stats") return keys([["⇥", "mode"], ["^S", "scope"], ["⏎", "refresh"], ...(stats && stats.total > stats.indexed ? [["^R", "reindex"] as [string, string]] : []), ["esc", "close"]]);
-    if (mode === "sql") return keys([["⇥", "mode"], ["⏎", "run"], ["^←→", "pan"], ["↑↓", "scroll"], ["esc", "close"]]);
+    if (mode === "sql") return keys([["⇥", "mode"], ["⏎", "run"], ...(output ? [["^←→", "pan"] as [string, string]] : []), ...(maxOffset ? [["↑↓", "scroll"] as [string, string]] : []), ["esc", "close"]]);
+    if (!rows.length) {
+      const actions: Array<[string, string]> = [["⇥", "mode"], ["^S", "scope"]];
+      if (mode === "trash") actions.push(["⏎", "refresh"]);
+      else if (mode === "list") actions.push(["⏎", "filter"]);
+      else actions.push(["⏎", "search"]);
+      actions.push(["esc", "close"]);
+      return keys(actions);
+    }
     return keys([["⇥", "mode"], ["^S", "scope"], ["↑↓", "select"], ["⏎", "open"], ...(mode === "list" || mode === "trash" ? [["^N/^P", "page"] as [string, string]] : []), ["esc", "close"]]);
   }
 
@@ -389,58 +448,108 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
     set focused(value: boolean) { focused = value; input.focused = value; },
     invalidate() { input.invalidate(); },
     dispose() { closed = true; sequence++; setLoading(false); },
+    get separators() { return separators; },
     render(width: number): string[] {
       input.focused = focused && mode !== "stats" && mode !== "trash" && !detail;
-      const height = Math.max(3, Math.min(18, tui.terminal.rows - 16));
       const lines: Line[] = [tabs(width)];
       const scopeText = mode === "sql" ? "All projects · read-only SQL" : SCOPE_LABEL[scope];
-      lines.push({ text: `${MUTED("Scope")} ${BRIGHT("●")} ${BLUE(scopeText)}` }, { text: "" });
+      lines.push({ text: `${MUTED("Scope")} ${BRIGHT("●")} ${BLUE(scopeText)}` });
       if (!detail && (mode === "search" || mode === "list" || mode === "debug" || mode === "sql")) {
-        const title = mode === "search" ? "Search memories · query sent to Google" : mode === "debug" ? "Explain a search · query sent to Google" : mode === "list" ? "Filter by kind" : "Read-only SQL";
-        lines.push({ text: BRIGHT(title) }, ...input.render(width).map((text) => ({ text })), { text: "" });
+        const title = mode === "search" ? "⌕ Search · sent to Google" : mode === "debug" ? "◎ Debug · sent to Google" : mode === "list" ? "☰ Filter by kind" : "⌗ Read-only SQL";
+        const queryLines = tui.terminal.rows >= 18
+          ? sectionCard(title, input.render(Math.max(1, width - 4)), width)
+          : input.render(width);
+        lines.push(...queryLines.map((text) => ({ text })));
       }
-      if (diagnostics && !detail) lines.push({ text: MUTED(diagnostics) });
+      separators = [lines.length];
+      lines.push({ text: BLUE("─".repeat(Math.max(1, width))) });
+      contentStart = lines.length;
+      contentHeight = Math.max(1, tui.terminal.rows - lines.length - 7);
+      const body: Line[] = [];
+      let stateInBody = false;
+      if (diagnostics && !detail) body.push({ text: MUTED(diagnostics) });
       if (detail) {
-        const body = detailLines(width);
-        maxOffset = Math.max(0, body.length - height);
-        offset = Math.min(offset, maxOffset);
-        lines.push(...body.slice(offset, offset + height).map((text) => ({ text })));
+        body.push(...detailLines(width).map((text) => ({ text })));
       } else if (output) {
         const raw = output.split("\n");
         maxPan = Math.max(0, ...raw.map((line) => visibleWidth(line) - width));
         pan = Math.min(pan, maxPan);
-        const body = mode === "sql" && !failed ? raw.map((line) => sliceByColumn(line, pan, width)) : raw.flatMap((line) => line ? wrapTextWithAnsi(line, Math.max(1, width)) : [""]);
-        maxOffset = Math.max(0, body.length - height);
-        offset = Math.min(offset, maxOffset);
-        lines.push(...body.slice(offset, offset + height).map((text) => ({ text: failed ? theme.fg("error", text) : text })));
+        const outputLines = mode === "sql" && !failed ? raw.map((line) => sliceByColumn(line, pan, width)) : raw.flatMap((line) => line ? wrapTextWithAnsi(line, Math.max(1, width)) : [""]);
+        body.push(...outputLines.map((text) => ({ text: failed ? theme.fg("error", text) : text })));
+      } else if (loading) {
+        stateInBody = true;
+        body.push(...emptyCard(`${SPINNER[frame % SPINNER.length]} Loading…`, `Reading ${LABEL[mode].toLowerCase()} for the selected scope.`, "You can switch tabs or press Esc to close.", width).map((text) => ({ text })));
       } else if (stats) {
-        const body = renderStats(stats, width);
-        maxOffset = Math.max(0, body.length - height);
-        offset = Math.min(offset, maxOffset);
-        lines.push(...body.slice(offset, offset + height).map((text) => ({ text })));
+        body.push(...renderStats(stats, width).map((text) => ({ text })));
       } else if (rows.length) {
-        const preview = selected >= 0 ? 2 : 0;
-        const visible = Math.max(1, height - preview);
+        const preview = selected >= 0 && contentHeight - body.length >= 3 ? 2 : 0;
+        const visible = Math.max(1, contentHeight - body.length - preview);
         const start = Math.max(0, Math.min(selected - visible + 1, rows.length - visible));
         const idWidth = Math.max(...rows.map((row) => row.id.length)) + 1;
         const kindWidth = Math.min(12, Math.max(4, ...rows.map((row) => row.kind.length)));
         rows.slice(start, start + visible).forEach((row, i) => {
           const index = start + i;
-          lines.push({ text: rowLine(row, index, width, idWidth, kindWidth), target: () => { if (selected === index) openDetail(row); else selected = index; } });
+          body.push({ text: rowLine(row, index, width, idWidth, kindWidth), target: () => { if (selected === index) openDetail(row); else selected = index; } });
         });
         const current = rows[selected];
-        if (current) {
-          lines.push({ text: "" });
-          lines.push({ text: `${BRIGHT("›")} ${MUTED(truncateToWidth(oneLine(current.content), Math.max(1, width - 2), "…"))}` });
+        if (current && preview) {
+          body.push({ text: "" });
+          body.push({ text: `${BRIGHT("›")} ${MUTED(truncateToWidth(oneLine(current.content), Math.max(1, width - 2), "…"))}` });
         }
-      } else if (status && !loading && mode !== "search" && mode !== "debug" && mode !== "sql") {
-        lines.push({ text: `  ${MUTED("◌")}  ${BLUE(message())}` });
+      } else {
+        stateInBody = true;
+        let title = `${ICON[mode]} Ready to search`;
+        let description = "Search saved preferences, decisions and notes.";
+        let action = "Type a query above, then press Enter.";
+        if (mode === "sql") {
+          title = "⌗ Read-only SQL";
+          description = "Inspect saved memories without changing data.";
+          action = "Enter a SELECT query above, then press Enter.";
+        } else if (mode === "trash") {
+          title = "⌫ Trash is empty";
+          description = "No deleted memories in the selected scope.";
+          action = "Trashed memories appear here until they expire.";
+        } else if (mode === "list") {
+          title = "☰ No memories to list";
+          description = "No memories match this scope, kind or page.";
+          action = "Clear the kind filter, change scope or return to the previous page.";
+        } else if (hasSubmitted) {
+          title = `${ICON[mode]} No matches`;
+          description = message();
+          action = "Try different words or change scope with Ctrl+S.";
+        } else if (mode === "debug") {
+          title = "◎ Explain a search";
+          description = "See how saved memories rank against your query.";
+        }
+        body.push(...emptyCard(title, description, action, width).map((text) => ({ text })));
       }
-      lines.push({ text: "" }, { text: statusLine() }, { text: hints() });
+      contentHeight = Math.min(contentHeight, Math.max(1, body.length));
+      maxOffset = Math.max(0, body.length - contentHeight);
+      offset = Math.min(offset, maxOffset);
+      const visible = body.slice(offset, offset + contentHeight);
+      lines.push(...visible, ...Array.from({ length: contentHeight - visible.length }, () => ({ text: "" })));
+      separators.push(lines.length);
+      lines.push({ text: BLUE("─".repeat(Math.max(1, width))) });
+      const footer = [stateInBody && !actionError && (loading || !status || status === message()) ? "" : statusLine(), maxOffset ? MUTED(`↕ ${offset + 1}–${Math.min(body.length, offset + contentHeight)} / ${body.length} · ↑↓ scroll`) : ""].filter((text) => visibleWidth(text) > 0).join(MUTED(" · "));
+      if (footer) lines.push({ text: footer });
+      let controls = hints();
+      if (!confirming && visibleWidth(controls) > width) {
+        const navigation: [string, string] = detail ? ["⌫", "back"] : ["⇥", "mode"];
+        controls = keys([navigation, ["esc", "close"]]);
+      }
+      lines.push({ text: controls });
       targets = lines.map((line) => line.target);
       return lines.map((line) => truncateToWidth(line.text, width));
     },
-    handleMouse(event: { type: string; button?: string; x?: number; y?: number }) {
+    handleMouse(event: { type: string; button?: string; x?: number; y?: number; wheelDelta?: number }) {
+      if (event.type === "wheel") {
+        if (event.y !== undefined && (event.y < contentStart || event.y >= contentStart + contentHeight)) return { handled: true };
+        const delta = Math.trunc(event.wheelDelta ?? 0);
+        if (detail || output || stats || maxOffset) offset = Math.max(0, Math.min(maxOffset, offset + delta));
+        else selected = Math.max(-1, Math.min(rows.length - 1, selected + delta));
+        tui.requestRender();
+        return { handled: true };
+      }
       if (event.type === "press" && event.button === "left") return { handled: true, focus: true };
       if (event.type !== "click" || event.button !== "left" || event.y === undefined) return undefined;
       const target = targets[event.y];
@@ -458,6 +567,11 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
         const id = detail.id;
         if (confirming === "trash") act("Moving to trash…", async () => { await deleteMemory(ctx.cwd, id); dropDetail(id); return `Moved #${id} to trash · restore it from ${ICON.trash} TRASH within ${TRASH_DAYS} days`; });
         else act("Deleting permanently…", async () => { await purgeMemory(ctx.cwd, id); dropDetail(id); return `Permanently deleted #${id}`; });
+        return;
+      }
+      if ((detail || output || stats || maxOffset) && (matchesKey(data, "pageUp") || matchesKey(data, "pageDown"))) {
+        offset = Math.max(0, Math.min(maxOffset, offset + (matchesKey(data, "pageUp") ? -contentHeight : contentHeight)));
+        tui.requestRender();
         return;
       }
       if (detail && matchesKey(data, "backspace")) {
@@ -496,8 +610,8 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
         submit(mode === "list" ? input.getValue() : "");
       } else if (mode === "sql" && matchesKey(data, "ctrl+right")) pan = Math.min(maxPan, pan + 8);
       else if (mode === "sql" && matchesKey(data, "ctrl+left")) pan = Math.max(0, pan - 8);
-      else if ((output || stats) && matchesKey(data, "up")) offset = Math.max(0, offset - 1);
-      else if ((output || stats) && matchesKey(data, "down")) offset = Math.min(maxOffset, offset + 1);
+      else if ((output || stats || maxOffset) && matchesKey(data, "up")) offset = Math.max(0, offset - 1);
+      else if ((output || stats || maxOffset) && matchesKey(data, "down")) offset = Math.min(maxOffset, offset + 1);
       else if (matchesKey(data, "up")) selected = Math.max(-1, selected - 1);
       else if (matchesKey(data, "down")) selected = Math.min(rows.length - 1, selected + 1);
       else if (mode === "stats" || mode === "trash") {
@@ -507,11 +621,12 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
       } else {
         if (!matchesKey(data, "return")) {
           selected = -1;
+          hasSubmitted = false;
           page = 0;
           sequence++;
           setLoading(false);
           if (failed) { failed = false; output = ""; }
-          status = mode === "list" ? "Enter to filter" : mode === "sql" ? "Enter to run" : "Enter to search · sent to Google";
+          status = "";
         }
         input.handleInput(data);
       }
@@ -550,10 +665,10 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
       invalidate() { content.invalidate(); },
       handleInput: content.handleInput,
       handleMouse(event) {
-        if (event.type === "wheel") { content.handleInput((event.wheelDelta ?? 0) < 0 ? "\x1b[A" : "\x1b[B"); return { handled: true }; }
+        if (event.type === "wheel") return content.handleMouse({ ...event, y: event.y === undefined ? undefined : event.y - 2 });
         if ((event.type === "press" || event.type === "click") && event.button === "left") {
           handle?.focus();
-          if (event.type === "click" && event.y !== undefined) content.handleMouse({ ...event, x: (event.x ?? 0) - 2, y: event.y - 1 });
+          if (event.type === "click" && event.y !== undefined) content.handleMouse({ ...event, x: (event.x ?? 0) - 2, y: event.y - 2 });
           tui.requestRender();
           return { handled: true, focus: true };
         }
@@ -562,8 +677,16 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
       render(width: number) {
         const inner = Math.max(1, width - 2);
         const border = (value: string) => BLUE(value);
-        const title = truncateToWidth(` ${BRIGHT("◆")} [memory] `, inner);
-        return [border("┏") + title + border("━".repeat(Math.max(0, inner - visibleWidth(title))) + "┓"), border("┃") + " ".repeat(inner) + border("┃"), ...content.render(Math.max(1, inner - 2)).map((line) => border("┃") + " " + truncateToWidth(line, Math.max(1, inner - 2), "…", true) + " " + border("┃")), border("┃") + " ".repeat(inner) + border("┃"), border("┗" + "━".repeat(inner) + "┛")];
+        const title = truncateToWidth(BOLD(BLUE(" ◆ [memory] ")), inner);
+        const body = content.render(Math.max(1, inner - 2));
+        return [
+          border("┏") + title + border("━".repeat(Math.max(0, inner - visibleWidth(title))) + "┓"),
+          border("┃") + " ".repeat(inner) + border("┃"),
+          ...body.map((line, index) => content.separators.includes(index)
+            ? border(`┣${"━".repeat(inner)}┫`)
+            : border("┃") + " " + truncateToWidth(line, Math.max(1, inner - 2), "…", true) + " " + border("┃")),
+          border("┗" + "━".repeat(inner) + "┛"),
+        ];
       },
     } as Component & Focusable, { anchor: "top-right", width: "65%", minWidth: 36, margin: { top: 1, right: 1 }, visible: (width, height) => width >= 80 && height >= 12, nonCapturing: true });
     handle.focus();

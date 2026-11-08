@@ -186,6 +186,31 @@ test("context panel recomputes layout when its width changes", () => {
   notes.close();
 });
 
+test("shared panels show blue icon headings and update the scroll position", () => {
+  for (const [title, icon] of [["task", "☑"], ["context", "☷"], ["usage", "▣"]]) {
+    let panel: any;
+    const tui = {
+      terminal: { columns: 120, rows: 12 }, requestRender() {},
+      showOverlay(component: unknown) { panel = component; return { hide() {}, focus() {}, isFocused: () => true }; },
+    };
+    const notes = createNotes(tui as never, { fg: (_color: string, text: string) => text } as never,
+      () => Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n"), () => {}, title);
+    try {
+      notes.open();
+      const lines: string[] = panel.render(80);
+      assert.match(lines[0]!, new RegExp(`\\x1b\\[38;2;90;175;255m\\x1b\\[1m ${icon} \\[${title}\\]`));
+      assert.ok(lines.length <= tui.terminal.rows);
+      const separators = lines.map((row) => row.replace(/\x1b\[[0-9;]*m/g, "")).filter((row) => row.startsWith("┣"));
+      assert.deepEqual(separators, Array(2).fill(`┣${"━".repeat(78)}┫`));
+      assert.match(lines.join("\n"), /↕ 1–4 \/ 30/);
+      panel.handleInput("down");
+      assert.match(panel.render(80).join("\n"), /↕ 2–5 \/ 30/);
+      panel.handleMouse({ type: "wheel", wheelDelta: 3 });
+      assert.match(panel.render(80).join("\n"), /↕ 5–8 \/ 30/);
+    } finally { notes.close(); }
+  }
+});
+
 test("context command opens a scrollable TUI and closes without starting an agent turn", async () => {
   let command: any;
   let closed = false;

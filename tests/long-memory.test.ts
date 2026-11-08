@@ -111,10 +111,34 @@ test("panel helpers render meters, relative time, kinds and stats", () => {
   assert.throws(() => normalizeKind("bad\u001bkind"), /Memory kind/);
   const stats = { scope: "both" as const, model: "m", dimensions: 768, topK: 5, minSimilarity: 0.6, total: 10, indexed: 8, trash: 1, global: 4, project: 6, groups: [{ scope: "global" as const, kind: "decision", total: 4, indexed: 4 }, { scope: "project" as const, kind: "decision", total: 2, indexed: 2 }, { scope: "project" as const, kind: "note", total: 4, indexed: 2 }] };
   const text = plain(renderStats(stats, 70));
-  assert.match(text, /10\s+8\s+2\s+1/);
-  assert.match(text, /memories\s+indexed\s+unindexed\s+in trash/);
-  assert.match(text, /█+░+ 80% search coverage/);
-  assert.match(text, /decision\s+█+ 6/);
+  assert.match(text, /│ 10\s+│\s+│ 8\s+│\s+│ 2\s+│\s+│ 1\s+│/);
+  assert.match(text, /│ memories\s+│\s+│ indexed\s+│\s+│ unindexed\s+│\s+│ in trash\s+│/);
+  for (const [width, columns, height] of [[36, 2, 9], [48, 2, 9], [70, 4, 4], [120, 4, 4]]) {
+    const summary = plain(renderStats(stats, width)).split("\n").slice(0, height);
+    assert.equal(summary.filter((row) => row.startsWith("╭")).length, 4 / columns);
+    assert.equal((summary.join("\n").match(/╭/g) ?? []).length, 4);
+    assert.equal((summary.join("\n").match(/╯/g) ?? []).length, 4);
+    assert.ok(summary.every((row) => row.length <= width));
+    for (const label of ["memories", "indexed", "unindexed", "in trash"]) assert.ok(summary.join("\n").includes(label));
+  }
+  assert.match(text, /▰+▱+ 80% search coverage/);
+  assert.match(text, /decision\s+▰+ 6/);
+  const rows = text.split("\n");
+  for (const [index, row] of rows.entries()) {
+    if (!row.includes("▰")) continue;
+    assert.ok((row.match(/[▰▱]/g) ?? []).length <= 28);
+    assert.match(rows[index + 1]!, /^│\s*│$|^╰/);
+  }
+  for (const width of [36, 48, 70, 120]) {
+    const sections = plain(renderStats(stats, width)).split("\n");
+    const chartRows = sections.filter((row) => /[▰▱]/.test(row));
+    assert.equal(chartRows.length, 5);
+    assert.ok(chartRows.every((row) => row.length <= width));
+    for (const title of ["◎ SEARCH COVERAGE", "◈ SCOPE", "☰ KINDS", "⚙ RETRIEVAL"]) {
+      assert.ok(sections.some((row) => row.startsWith(`╭─ ${title} `) && row.endsWith("╮") && row.length === width));
+    }
+    assert.ok(sections.filter((row) => row.startsWith("│")).every((row) => row.length <= width));
+  }
   assert.match(text, /2 memories are not searchable · Ctrl\+R to reindex/);
   assert.match(plain(renderStats({ ...stats, total: 0, indexed: 0, trash: 0, global: 0, project: 0, groups: [] }, 70)), /No memories yet/);
 });
@@ -151,6 +175,13 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   assert.match(view(), active("STATS"));
   assert.match(plain(panel.render(70)), /◆ \[memory\]/);
   assert.match(plain(panel.render(70)), /Scope ● Global \+ current project/);
+  const sections = panel.render(70).map((row: string) => plain([row]));
+  const rule = `┣${"━".repeat(68)}┫`;
+  assert.equal(sections.filter((row: string) => row === rule).length, 2);
+  assert.equal(sections[sections.findIndex((row: string) => row.includes("Scope ●")) + 1], rule);
+  assert.equal(sections[sections.length - 3], rule);
+  assert.ok(sections[sections.length - 2].includes("esc close"));
+  assert.ok(sections.length < tui.terminal.rows);
   assert.ok(panel.render(70)[0].startsWith("\x1b[38;2;90;175;255m"));
   assert.doesNotMatch(view(), /Search memories|sent to Google|Filter by kind/);
   for (let i = 0; i < 50 && /Loading/.test(view()); i++) await new Promise((resolve) => setTimeout(resolve, 10));
@@ -162,7 +193,7 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   assert.match(view(), active("STATS"));
   panel.handleInput("tab");
   assert.match(view(), active("SEARCH"));
-  assert.match(view(), /Search memories · query sent to Google/);
+  assert.match(view(), /⌕ Search · sent to Google/);
   panel.handleInput("search text should not become a filter");
   panel.handleInput("tab");
   assert.match(view(), active("LIST"));
@@ -180,7 +211,7 @@ test("memory command discovers actions and manages sticky overlay focus", async 
   panel.handleInput("tab");
   assert.match(plain(panel.render(70)), /Scope ● Global \+ current project/);
   assert.match(view(), /Loading/);
-  panel.handleMouse({ type: "click", button: "left", x: 14, y: 1 });
+  panel.handleMouse({ type: "click", button: "left", x: 14, y: 2 });
   assert.match(view(), active("SEARCH"));
   panel.handleInput("tab");
   panel.handleInput("escape");
@@ -202,6 +233,44 @@ test("SQL errors remain visible and scrollable below the controls", async () => 
   assert.match(rendered, /SQL query failed/);
   assert.match(rendered, /<error>SQL must be between 1 and 10000 characters<\/error>/);
   panel.dispose();
+});
+
+test("memory scrolls only its bounded content and keeps the controls pinned", async () => {
+  const terminal = { rows: 12 };
+  const panel = createPanel({ cwd: "/tmp" } as never, { terminal, requestRender() {} } as never, { fg: (_color: string, text: string) => text } as never, () => {});
+  try {
+    for (let i = 0; i < 5; i++) panel.handleInput("tab");
+    panel.handleInput("x".repeat(10001));
+    panel.handleInput("return");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const before = panel.render(20);
+    const [header, footer] = panel.separators;
+    assert.ok(before.length + 3 < terminal.rows);
+    assert.equal(footer! - header!, 2);
+    assert.match(plain(before), /↕ 1–1 \/ 3/);
+    panel.handleInput("down");
+    const after = panel.render(20);
+    assert.equal(after.length, before.length);
+    assert.deepEqual(after.slice(0, header! + 1), before.slice(0, header! + 1));
+    assert.equal(after.at(-1), before.at(-1));
+    assert.match(plain([after.at(-1)!]), /⇥ mode\s+·\s+esc close/);
+    assert.notEqual(after[header! + 1], before[header! + 1]);
+    assert.match(plain(after), /↕ 2–2 \/ 3/);
+    panel.handleMouse({ type: "wheel", y: 0, wheelDelta: 1 });
+    assert.deepEqual(panel.render(20), after);
+    panel.handleMouse({ type: "wheel", y: footer, wheelDelta: 1 });
+    assert.deepEqual(panel.render(20), after);
+    panel.handleMouse({ type: "wheel", y: header! + 1, wheelDelta: 1 });
+    assert.match(plain(panel.render(20)), /↕ 3–3 \/ 3/);
+    panel.handleInput("pageUp");
+    assert.match(plain(panel.render(20)), /↕ 2–2 \/ 3/);
+    terminal.rows = 40;
+    const resized = panel.render(70);
+    assert.ok(resized.length + 3 < terminal.rows);
+    assert.ok(resized.length < 20);
+    assert.doesNotMatch(plain(resized), /↕/);
+    assert.match(plain(resized), /SQL must be between 1 and 10000 characters/);
+  } finally { panel.dispose(); }
 });
 
 test("SQL results render as sanitized tables", () => {

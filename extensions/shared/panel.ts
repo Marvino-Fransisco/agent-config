@@ -41,19 +41,24 @@ export function createNotes(tui: TUI, theme: Theme, readText: (width: number) =>
         const inner = Math.max(1, width - 2);
         const textWidth = Math.max(1, inner - 2);
         if (textWidth !== contentWidth) refresh(textWidth);
-        const height = Math.max(1, Math.min(16, tui.terminal.rows - 6));
+        const height = Math.max(1, Math.min(16, tui.terminal.rows - 8));
         const lines = text.split("\n").flatMap((line) => wrapTextWithAnsi(line, textWidth));
         maxOffset = Math.max(0, lines.length - height);
         offset = Math.min(offset, maxOffset);
-        const heading = truncateToWidth(` [${title}] `, inner);
+        let icon = "▣";
+        if (title === "context") icon = "☷";
+        else if (title === "task") icon = "☑";
         const border = (value: string) => `\x1b[38;2;90;175;255m${value}\x1b[39m`;
+        const heading = truncateToWidth(border(`\x1b[1m ${icon} [${title}] \x1b[22m`), inner);
         const row = (value: string) => border("┃") + " " + truncateToWidth(value, textWidth, "…", true) + " " + border("┃");
         return [
-          border(`┏${heading}${"━".repeat(Math.max(0, inner - visibleWidth(heading)))}┓`),
+          border("┏") + heading + border(`${"━".repeat(Math.max(0, inner - visibleWidth(heading)))}┓`),
           row(""),
+          border(`┣${"━".repeat(inner)}┫`),
           ...lines.slice(offset, offset + height).map(row),
-          row(""),
-          row(theme.fg("dim", handle?.isFocused() ? " ↑↓ scroll · Esc close " : ` /${title} to close `)),
+          border(`┣${"━".repeat(inner)}┫`),
+          ...(maxOffset ? [row(border(`↕ ${offset + 1}–${Math.min(lines.length, offset + height)} / ${lines.length}`))] : []),
+          row(theme.fg("dim", handle?.isFocused() ? "↑↓ scroll · PgUp/PgDn · Esc close" : `/${title} to close`)),
           border(`┗${"━".repeat(inner)}┛`),
         ];
       },

@@ -110,7 +110,7 @@ test("task notes update from disk, scroll and close on escape", async () => {
   assert.match(rows.join("\n"), /Panel task/);
   const plainRows = rows.map((row) => row.replace(/\x1b\[[\d;]*m/g, ""));
   assert.ok(plainRows.every((row) => [...row].length === 50));
-  assert.ok(plainRows.slice(1, -1).every((row) => row.startsWith("┃") && row.endsWith("┃")));
+  assert.ok(plainRows.slice(1, -1).every((row) => (row.startsWith("┃") && row.endsWith("┃")) || (row.startsWith("┣") && row.endsWith("┫"))));
   assert.ok(rows.every((row) => row.startsWith("\x1b[38;2;90;175;255m")));
   assert.deepEqual(h.panel()!.handleMouse({ type: "press", button: "left" }), { handled: true, focus: true });
   assert.equal(h.isFocused(), true);

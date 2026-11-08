@@ -29,7 +29,7 @@ export class Text {
   invalidate() {}
 }
 
-export const truncateToWidth = (s, width, _ellipsis, pad) => pad ? s.padEnd(width) : s;
+export const truncateToWidth = (s, width, _ellipsis, pad) => pad ? s + " ".repeat(Math.max(0, width - visibleWidth(s))) : s;
 export const visibleWidth = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
 export const sliceByColumn = (s, start, length) => [...s].slice(start, start + length).join("");
 export const matchesKey = (data, key) => data === key;
