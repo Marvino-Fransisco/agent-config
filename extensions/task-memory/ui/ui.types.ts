@@ -7,4 +7,5 @@ export interface WidgetState {
   percent: number | null;
   thresholds: Thresholds;
   baseline?: number;
+  pendingMessage?: string;
 }

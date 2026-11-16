@@ -36,7 +36,15 @@ export default function (pi: ExtensionAPI) {
   let notes: ReturnType<typeof createNotes> | undefined;
   let cachedTask: StateTypes.Task | null = null;
   let pendingInject: PendingInjection | undefined;
+  let pendingMessage: string | undefined;
 
+  pi.events?.on("undo-send:pending", (data) => {
+    if (!rerender || ctxRef?.mode !== "tui") return;
+    const pending = data as { text?: string; handled: boolean };
+    pendingMessage = pending.text;
+    pending.handled = true;
+    rerender();
+  });
   pi.events?.on("task-memory:footer:available", (data) => {
     if (rerender && ctxRef?.mode === "tui") (data as { available: boolean }).available = true;
   });
@@ -154,6 +162,7 @@ export default function (pi: ExtensionAPI) {
     compactNow = undefined;
     lastCompactFromUs = false;
     pendingInject = undefined;
+    pendingMessage = undefined;
     scratchSeq = 0;
     gitBaseline = undefined;
     memoryError = undefined;
@@ -285,7 +294,7 @@ export default function (pi: ExtensionAPI) {
         active: [...active.values()].map((a) => a.kind), last: lastKind,
       },
       percent: ctxRef ? pct(ctxRef) : null,
-      thresholds: th, baseline,
+      thresholds: th, baseline, pendingMessage,
     }), (callback) => { rerender = callback; }, (tui, theme) => {
       notes?.close();
       notes = createNotes(tui, theme, () => {

@@ -1,5 +1,5 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type TUI } from "@earendil-works/pi-tui";
 import { contextLevel, derivePhase, PHASE_ICON } from "../phase/phase.ts";
 import type { WidgetState } from "./ui.types.ts";
 import { statusLine } from "../state/state.ts";
@@ -41,7 +41,7 @@ export function installWidget(
       dispose() { if (timer) clearInterval(timer); setRerender(undefined); },
       invalidate() {},
       render(width: number): string[] {
-        const { task, phase: input, percent, thresholds, baseline } = getState();
+        const { task, phase: input, percent, thresholds, baseline, pendingMessage } = getState();
         const phase = derivePhase({
           ...input,
           hasTask: task !== null,
@@ -53,7 +53,18 @@ export function installWidget(
         const label = phase === "idle" ? theme.fg("dim", phase) : animatePhase(phase, frame);
         const head = `${icon} ${label}`;
         const status = `${head}${theme.fg("muted", ` · ${statusLine(task)}`)}`;
-        const lines = [truncateToWidth(status, width, "…")];
+        const lines: string[] = [];
+        if (pendingMessage && width > 0) {
+          const padding = width > 2 ? 1 : 0;
+          const empty = theme.bg("userMessageBg", " ".repeat(width));
+          lines.push(empty);
+          for (const line of pendingMessage.split("\n").flatMap((text) => wrapTextWithAnsi(text, width - padding * 2))) {
+            const content = " ".repeat(padding) + line;
+            lines.push(theme.bg("userMessageBg", content + " ".repeat(Math.max(0, width - visibleWidth(content)))));
+          }
+          lines.push(empty);
+        }
+        lines.push(truncateToWidth(status, width, "…"));
         const lvl = contextLevel(percent, thresholds, baseline);
 
         if (percent !== null && lvl === "must") {
