@@ -1,10 +1,9 @@
 import pg from "pg";
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { promisify } from "node:util";
 import { readConfig } from "./config.ts";
+import { resolveProject } from "../../shared/project.ts";
 
 export const MODEL = "gemini-embedding-001";
 export const DIMENSIONS = 768;
@@ -35,20 +34,11 @@ export type MemoryRow = {
 
 export type ProjectRow = { id: string; path: string; name: string; memories: number; exists: boolean };
 
-const execFileAsync = promisify(execFile);
-const projectPaths = new Map<string, Promise<string>>();
 const pools = new Map<string, pg.Pool>();
 const verified = new WeakSet<pg.PoolClient>();
 
 export function projectPath(cwd: string): Promise<string> {
-  let cached = projectPaths.get(cwd);
-  if (!cached) {
-    cached = execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8" })
-      .then((result) => realpath(result.stdout.trim()), () => realpath(cwd));
-    cached.catch(() => projectPaths.delete(cwd));
-    projectPaths.set(cwd, cached);
-  }
-  return cached;
+  return resolveProject(cwd).then((project) => project.root);
 }
 
 export function normalizeKind(kind: string): string {

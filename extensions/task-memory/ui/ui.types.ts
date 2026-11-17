@@ -8,4 +8,5 @@ export interface WidgetState {
   thresholds: Thresholds;
   baseline?: number;
   pendingMessage?: string;
+  pendingIndicator?: string;
 }

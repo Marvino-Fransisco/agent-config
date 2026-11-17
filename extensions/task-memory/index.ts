@@ -14,9 +14,12 @@ import type { TaskParams } from "./schema/schema.types.ts";
 import { applyTaskAction } from "./actions/actions.ts";
 import type { Handoff } from "./actions/actions.types.ts";
 import type { Saved, PendingInjection, ActiveTool } from "./index.types.ts";
-import { compactionDraft, lastKnownHash } from "./compaction/compaction.ts";
+import { compactionDraft, compactionWorkKey, lastKnownHash } from "./compaction/compaction.ts";
+import { handoffBudget, HandoffBudgetError, textTokens } from "./compaction/budget.ts";
+import { renderBudgetedHandoff } from "./compaction/handoff.ts";
 import { installWidget } from "./ui/ui.ts";
 import { createNotes } from "./ui/notes.ts";
+import { canonicalFilePath, projectText, resolveProject, type ProjectIdentity } from "../shared/project.ts";
 
 const LABELS: Record<string, string> = {
   "task-memory-warn": "context high: handoff at the next step boundary",
@@ -30,6 +33,9 @@ export default function (pi: ExtensionAPI) {
   let cwd = process.cwd();
   let root = cwd;
   let dir = path.join(root, ".pi", "memory");
+  let projectIdentity: ProjectIdentity | undefined;
+  let projectError: string | undefined;
+  const externalEdits = new Set<string>();
   let th: Thresholds = readThresholds(process.env);
   let ctxRef: ExtensionContext | undefined;
   let rerender: (() => void) | undefined;
@@ -37,11 +43,13 @@ export default function (pi: ExtensionAPI) {
   let cachedTask: StateTypes.Task | null = null;
   let pendingInject: PendingInjection | undefined;
   let pendingMessage: string | undefined;
+  let pendingIndicator: string | undefined;
 
   pi.events?.on("undo-send:pending", (data) => {
     if (!rerender || ctxRef?.mode !== "tui") return;
-    const pending = data as { text?: string; handled: boolean };
+    const pending = data as { text?: string; indicator?: string; handled: boolean };
     pendingMessage = pending.text;
+    pendingIndicator = pending.indicator;
     pending.handled = true;
     rerender();
   });
@@ -82,6 +90,7 @@ export default function (pi: ExtensionAPI) {
   let compactNow: Saved | undefined; // checkpoint that asked for compaction at turn_end
   let lastCompactFromUs = false;
   let scratchSeq = 0;
+  let lastAutoCompaction: string | undefined;
 
   const now = () => new Date().toISOString();
   const safeTask = () => {
@@ -103,12 +112,14 @@ export default function (pi: ExtensionAPI) {
   const stateText = (task: StateTypes.Task | null, project: StateTypes.Project) =>
     [S.renderTask(task), S.renderProject(project)].filter(Boolean).join("\n\n");
 
-  function injectText(task: StateTypes.Task | null, project: StateTypes.Project, taskPrefix: string): string {
-    const parts: string[] = [];
-    const pm = S.renderProject(project);
-    if (pm) parts.push(`${P.PROJECT_PREFIX}\n\n${pm}`);
-    if (task) parts.push(`${taskPrefix}\n\n${S.renderTask(task)}`);
-    return parts.join("\n\n");
+  function injectText(task: StateTypes.Task | null, project: StateTypes.Project, taskPrefix: string, warnings: string[] = []): string {
+    if (!task && !S.renderProject(project)) return "";
+    if (!ctxRef) throw new HandoffBudgetError("No active model context for saved state.");
+    const budget = handoffBudget(pi, ctxRef, th.warn);
+    const projection = ctxRef.sessionManager.buildSessionProjection();
+    const existing = (projection.messages ?? []).filter((message) => message.role !== "system").reduce((sum, message) => sum + textTokens(JSON.stringify(message)), 0);
+    const cap = Math.min(budget.summaryTokens, budget.availableTokens - existing);
+    return renderBudgetedHandoff({ task, project, root }, cap, [task ? taskPrefix : P.PROJECT_PREFIX, ...warnings]);
   }
 
   function touchedList(): string[] {
@@ -163,10 +174,15 @@ export default function (pi: ExtensionAPI) {
     lastCompactFromUs = false;
     pendingInject = undefined;
     pendingMessage = undefined;
+    pendingIndicator = undefined;
     scratchSeq = 0;
+    lastAutoCompaction = undefined;
     gitBaseline = undefined;
     memoryError = undefined;
     taskMtime = null;
+    projectIdentity = undefined;
+    projectError = undefined;
+    externalEdits.clear();
   }
 
   function findRoot(start: string): string {
@@ -220,8 +236,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function resumeText(task: StateTypes.Task | null, project: StateTypes.Project, tree = false): Promise<string> {
-    const content = injectText(task, project, P.RESUME_PREFIX);
-    if (!task) return content;
+    if (!task) return injectText(task, project, P.RESUME_PREFIX);
     const cp = task.checkpoint;
     const current = await gitInfo();
     const warnings: string[] = [];
@@ -237,7 +252,7 @@ export default function (pi: ExtensionAPI) {
       warnings.push("Revalidate affected files, line ranges, facts and progress; preserve user changes.");
       notify("task-memory: saved task may be stale; agent must revalidate before continuing", "warning");
     }
-    return warnings.length ? `${content}\n\n[task-memory] Resume checks:\n- ${warnings.join("\n- ")}` : content;
+    return injectText(task, project, P.RESUME_PREFIX, warnings);
   }
 
   async function refreshInject(ctx: ExtensionContext, tree = false): Promise<void> {
@@ -248,7 +263,9 @@ export default function (pi: ExtensionAPI) {
       const content = await resumeText(task, project, tree);
       pendingInject = content && (tree || content.includes("[task-memory] Resume checks:") || lastKnownHash(ctx) !== h) ? { content, hash: h } : undefined;
     } catch (err) {
-      const message = `task-memory: failed to load memory: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
+      const message = err instanceof HandoffBudgetError
+        ? `task-memory: saved state was not injected: ${err.message} Full state remains at ${dir}.`
+        : `task-memory: failed to load memory: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
       notify(message, "error");
       pendingInject = { content: message, hash: "memory-error" };
     }
@@ -258,12 +275,18 @@ export default function (pi: ExtensionAPI) {
     const mem = path.join(".pi", "memory");
     for (const raw of argPaths(args)) {
       if (/^[a-z]+:\/\//i.test(raw)) continue;
-      const abs = path.resolve(cwd, raw);
+      const abs = canonicalFilePath(path.resolve(cwd, raw));
       let rel = path.relative(root, abs);
-      if (rel.startsWith("..")) rel = abs;
+      if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) rel = abs;
       if (!rel || isDir(abs)) continue; // repo root itself, or a directory from ls/find/grep
       if (rel === mem || rel.startsWith(mem + path.sep)) continue;
-      if (kind === "edit") { touched.set(rel, "edit"); runEdited.add(rel); editSeq++; }
+      if (kind === "edit") {
+        if (path.isAbsolute(rel) && !externalEdits.has(rel)) {
+          externalEdits.add(rel);
+          notify(`task-memory: edited outside the active project: ${rel}. Memory still belongs to ${root}; open a session in the target repository to change scope.`, "warning");
+        }
+        touched.set(rel, "edit"); runEdited.add(rel); editSeq++;
+      }
       else if (!touched.has(rel)) touched.set(rel, "read");
     }
   }
@@ -273,8 +296,15 @@ export default function (pi: ExtensionAPI) {
     ctxRef = ctx;
     resetAll();
     cwd = ctx.cwd;
-    root = findRoot(ctx.cwd);
+    const legacyRoot = fs.realpathSync(findRoot(ctx.cwd));
+    projectIdentity = await resolveProject(ctx.cwd);
+    root = projectIdentity.root;
     dir = path.join(root, ".pi", "memory");
+    if (legacyRoot !== root && ["task.json", "project.json"].some((file) => fs.existsSync(path.join(legacyRoot, ".pi", "memory", file)))) {
+      projectError = `task-memory: existing state belongs to ${legacyRoot}, but the canonical project is ${root}. No files were moved. Reconcile these paths before using task memory.`;
+      notify(projectError, "error");
+      return;
+    }
     th = readThresholds(process.env);
     try {
       const settings = S.loadThresholdSettings(dir);
@@ -294,13 +324,13 @@ export default function (pi: ExtensionAPI) {
         active: [...active.values()].map((a) => a.kind), last: lastKind,
       },
       percent: ctxRef ? pct(ctxRef) : null,
-      thresholds: th, baseline, pendingMessage,
+      thresholds: th, baseline, pendingMessage, pendingIndicator,
     }), (callback) => { rerender = callback; }, (tui, theme) => {
       notes?.close();
       notes = createNotes(tui, theme, () => {
         const task = S.loadTaskFile(dir).task;
         const project = S.loadProject(dir);
-        return stateText(task, project) || "No active task and no project memory.";
+        return `${projectIdentity ? projectText(projectIdentity) : `Project: ${root}`}\n\n${stateText(task, project) || "No active task and no project memory."}`;
       }, (message) => notify(message, "error"), "task", () => pi.events?.emit("ui:panel:opening", { name: "task" }));
     });
   });
@@ -326,7 +356,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("agent_start", async () => { running = true; gitBaseline = await gitFingerprint(); render(); });
   pi.on("turn_start", async () => { if (compacting) { compacting = false; render(); } });
-  pi.on("model_select", async (_e, ctx) => { ctxRef = ctx; render(); });
+  pi.on("model_select", async (_e, ctx) => {
+    ctxRef = ctx;
+    baseline = undefined; needBaseline = false; deferredCompaction = false;
+    await refreshInject(ctx);
+    render();
+  });
   pi.on("thinking_level_select", async (_e, ctx) => { ctxRef = ctx; render(); });
   pi.on("agent_settled", async () => {
     running = false; resuming = false; compacting = false;
@@ -349,7 +384,16 @@ export default function (pi: ExtensionAPI) {
     const a = active.get(e.toolCallId); active.delete(e.toolCallId);
     const kind = a?.kind ?? classifyTool(e.toolName, undefined);
     lastKind = kind;
-    if (e.toolName === "task") taskEngaged = true; else fresh = undefined;
+    if (e.toolName === "task") taskEngaged = true;
+    else {
+      fresh = undefined;
+      if (compactNow) {
+        compactNow = undefined;
+        compacting = false;
+        handoff = "boundary";
+        notify("task-memory: another tool completed after the checkpoint. Context was retained; write a fresh checkpoint in a separate tool call.", "warning");
+      }
+    }
     if (!e.isError) {
       if (kind === "edit" || kind === "verify") resuming = false;
       if (kind === "edit" || kind === "read") trackFiles(a?.args, kind);
@@ -367,11 +411,25 @@ export default function (pi: ExtensionAPI) {
     ctxRef = ctx;
     if (compactNow) {
       const c = compactNow;
-      const draft = compactionDraft(pi, ctx, c.summary, { hash: c.hash, checkpoint: c.seq });
-      newSegment(); compacting = true;
-      notify(`task-memory: compacted using handoff #${c.seq}`);
-      render();
-      return { entries: [...e.entries, draft] };
+      compactNow = undefined;
+      try {
+        if (e.outcome !== "completed" || e.toolResults.some((result) => result.toolName && result.toolName !== "task")) throw new HandoffBudgetError("Checkpoint shared a turn with other tools or an incomplete response. Context was retained; write a fresh checkpoint in a separate tool call.");
+        if (S.stateHash(S.loadTaskFile(dir).task, S.loadProject(dir)) !== c.hash) throw new HandoffBudgetError("Saved task/project state changed after this checkpoint. Write a fresh checkpoint before compacting.");
+        const budget = handoffBudget(pi, ctx, th.warn);
+        const summary = renderBudgetedHandoff(c, budget.summaryTokens);
+        const draft = compactionDraft(pi, ctx, summary, { hash: c.hash, checkpoint: c.seq }, th.warn);
+        lastAutoCompaction = compactionWorkKey(ctx, `${budget.key}:${c.hash}`);
+        newSegment(); compacting = true;
+        notify(`task-memory: compacted using handoff #${c.seq}`);
+        render();
+        return { entries: [...e.entries, draft] };
+      } catch (error) {
+        if (!(error instanceof HandoffBudgetError)) throw error;
+        compacting = false;
+        deferCompaction();
+        notify(`task-memory: ${error.message}`, "error");
+        return;
+      }
     }
     if (e.outcome !== "completed") return;
     const ending = e.toolResults.length === 0;
@@ -421,15 +479,35 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_before_compact", async (e, ctx) => {
-    if (fresh) {
-      const f = fresh;
-      lastCompactFromUs = true; compacting = true; render();
-      return { compaction: {
-        summary: f.summary,
-        firstKeptEntryId: e.preparation.firstKeptEntryId,
-        tokensBefore: e.preparation.tokensBefore,
-        details: { source: "task-memory", hash: f.hash, checkpoint: f.seq },
-      } };
+    ctxRef = ctx;
+    try {
+      const budget = handoffBudget(pi, ctx, th.warn, e.preparation.settings);
+      if (e.reason !== "manual") {
+        const key = compactionWorkKey(ctx, `${budget.key}:${S.stateHash(S.loadTaskFile(dir).task, S.loadProject(dir))}`);
+        if (key === lastAutoCompaction) throw new HandoffBudgetError("Automatic compaction already ran without new work or a model/settings change. Repetition was stopped; inspect fixed context and compaction settings.");
+        lastAutoCompaction = key;
+      }
+      if (fresh) {
+        const f = fresh;
+        if (S.stateHash(S.loadTaskFile(dir).task, S.loadProject(dir)) !== f.hash) throw new HandoffBudgetError("Saved task/project state changed after this checkpoint. Write a fresh checkpoint before compacting.");
+        const summary = renderBudgetedHandoff(f, budget.summaryTokens);
+        const draft = compactionDraft(pi, ctx, summary, { hash: f.hash, checkpoint: f.seq }, th.warn, e.preparation.settings);
+        let firstKeptEntryId = draft.firstKeptEntryId;
+        if (firstKeptEntryId === null) {
+          pi.appendEntry("task-memory-retain-none", {});
+          firstKeptEntryId = ctx.sessionManager.getLeafId();
+          if (!firstKeptEntryId) throw new HandoffBudgetError("Could not establish a safe retain-none boundary; context was retained.");
+        }
+        lastCompactFromUs = true; compacting = true; render();
+        return { compaction: { summary, firstKeptEntryId, tokensBefore: e.preparation.tokensBefore, details: draft.details } };
+      }
+    } catch (error) {
+      if (!(error instanceof HandoffBudgetError)) throw error;
+      lastCompactFromUs = false;
+      compacting = false;
+      deferCompaction();
+      notify(`task-memory: ${error.message}`, "error");
+      return { cancel: true };
     }
     if (e.reason === "manual" && !running && ctx.hasUI && !deferredCompaction) {
       handoff = "manual"; terminateAfter = true; render();
@@ -454,7 +532,13 @@ export default function (pi: ExtensionAPI) {
       pi.sendMessage({ customType: "task-memory-state", content: message, display: false }, { deliverAs: running ? "steer" : "nextTurn" });
       return;
     }
-    const content = injectText(task, project, P.POST_COMPACT_PREFIX);
+    let content: string;
+    try { content = injectText(task, project, P.POST_COMPACT_PREFIX); }
+    catch (error) {
+      if (!(error instanceof HandoffBudgetError)) throw error;
+      notify(`task-memory: saved state was not re-injected: ${error.message} Full state remains at ${dir}.`, "error");
+      return;
+    }
     if (!content) return;
     pi.sendMessage(
       { customType: "task-memory-state", content, display: false, details: { hash: S.stateHash(task, project) } },
@@ -480,6 +564,7 @@ export default function (pi: ExtensionAPI) {
     prepareArguments: (args) => S.inferAction(args) as TaskParams,
     async execute(_id, p, _signal, _onUpdate, ctx) {
       ctxRef = ctx; taskEngaged = true;
+      if (projectError) throw new Error(projectError);
       const t: StateTypes.Trim = { n: 0 };
       const ts = now();
       const git = p.action === "checkpoint" ? await gitInfo() : {};
@@ -488,17 +573,32 @@ export default function (pi: ExtensionAPI) {
       const result = applyTaskAction({ p, file, project, ts, t, git, dir, root, scratchSeq, handoff, terminateAfter });
       let { text } = result;
       const { changed, saveProject, terminate, ck } = result;
+      if (changed && file.task) file.task.updatedAt = ts;
+      let saved: Saved | undefined;
+      if (ck) {
+        if (t.n) throw new HandoffBudgetError("Checkpoint fields exceeded their storage limits. Shorten the fields explicitly; the previous checkpoint was retained rather than compacting truncated context.");
+        saved = { ...structuredClone({ task: file.task, project, checkpoint: ck.checkpoint }), root, hash: S.stateHash(file.task, project), seq: ck.seq };
+        if (ck.compact) {
+          try {
+            const budget = handoffBudget(pi, ctx, th.warn);
+            const summary = renderBudgetedHandoff(saved, budget.summaryTokens);
+            compactionDraft(pi, ctx, summary, { hash: saved.hash, checkpoint: saved.seq }, th.warn);
+          } catch (error) {
+            if (error instanceof HandoffBudgetError) { deferCompaction(); notify(`task-memory: ${error.message}`, "error"); }
+            throw error;
+          }
+        }
+      }
       scratchSeq = result.scratchSeq;
 
       if (changed) {
-        if (file.task) file.task.updatedAt = ts;
         S.saveTaskFile(dir, file);
         cachedTask = file.task;
       }
       if (saveProject) S.saveProject(dir, project);
       const h = S.stateHash(file.task, project);
-      if (ck?.compact) { compactNow = { summary: ck.summary, hash: h, seq: ck.seq }; compacting = true; }
-      else if (ck) fresh = { summary: ck.summary, hash: h, seq: ck.seq };
+      if (ck?.compact && saved) { compactNow = saved; compacting = true; }
+      else if (saved) fresh = saved;
       else if (changed || saveProject) fresh = undefined;
       const recordsProgress = p.action === "checkpoint" || p.action === "finish" ||
         (p.action === "step" && (p.status === "done" || p.status === "skipped")) ||
@@ -506,7 +606,7 @@ export default function (pi: ExtensionAPI) {
       if (recordsProgress) { syncedSeq = editSeq; runEdited.delete("Git working tree (inspect changes)"); gitBaseline = await gitFingerprint(); }
       if (t.n) text += `\n(trimmed ${t.n} long field${t.n > 1 ? "s" : ""}; keep memory terse)`;
       render();
-      return { content: [{ type: "text", text }], details: { hash: h, action: p.action }, terminate };
+      return { content: [{ type: "text", text: `${text}\n\n${projectText(projectIdentity ?? await resolveProject(ctx.cwd))}` }], details: { hash: h, action: p.action, project: root }, terminate };
     },
     renderCall(args, theme) {
       const extra = args.title ?? (args.id !== undefined ? `#${args.id} ${args.status ?? ""}` : args.next ?? "");
@@ -538,6 +638,7 @@ export default function (pi: ExtensionAPI) {
       ["resume", "abandon", "clear-archive", "threshold", "threshold warning", "threshold mandatory"].flatMap((s) => (s.startsWith(prefix) ? [{ value: s, label: s }] : [])),
     handler: async (args, ctx) => {
       ctxRef = ctx;
+      if (projectError) { notify(projectError, "error"); return; }
       const sub = args.trim();
       if (sub === "threshold" || sub.startsWith("threshold ")) {
         const parts = sub.split(/\s+/);

@@ -89,7 +89,7 @@ test("agent mutations require explicit interactive confirmation", async () => {
   extension({ on() {}, registerTool: (value: unknown) => { tool = value; }, registerCommand() {} } as never);
   await assert.rejects(tool.execute("id", { action: "save", scope: "global", content: "remember" }, undefined, undefined, { hasUI: false }), /confirmation/);
   let asked = false;
-  const ctx = { hasUI: true, ui: { confirm: async () => { asked = true; return false; } } };
+  const ctx = { cwd: tmpdir(), hasUI: true, ui: { confirm: async () => { asked = true; return false; } } };
   await assert.rejects(tool.execute("id", { action: "save", scope: "global", content: "remember" }, undefined, undefined, ctx), /cancelled/);
   assert.equal(asked, true);
   asked = false;
@@ -245,7 +245,7 @@ test("memory scrolls only its bounded content and keeps the controls pinned", as
     await new Promise((resolve) => setTimeout(resolve, 0));
     const before = panel.render(20);
     const [header, footer] = panel.separators;
-    assert.ok(before.length + 3 < terminal.rows);
+    assert.ok(before.length + 2 < terminal.rows);
     assert.equal(footer! - header!, 2);
     assert.match(plain(before), /↕ 1–1 \/ 3/);
     panel.handleInput("down");
@@ -266,7 +266,7 @@ test("memory scrolls only its bounded content and keeps the controls pinned", as
     assert.match(plain(panel.render(20)), /↕ 2–2 \/ 3/);
     terminal.rows = 40;
     const resized = panel.render(70);
-    assert.ok(resized.length + 3 < terminal.rows);
+    assert.ok(resized.length + 2 < terminal.rows);
     assert.ok(resized.length < 20);
     assert.doesNotMatch(plain(resized), /↕/);
     assert.match(plain(resized), /SQL must be between 1 and 10000 characters/);

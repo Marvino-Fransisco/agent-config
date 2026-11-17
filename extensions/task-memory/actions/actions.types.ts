@@ -4,7 +4,7 @@ import type { TaskParams } from "../schema/schema.types.ts";
 export type Handoff = "none" | "boundary" | "settle" | "must" | "manual";
 
 export interface ActionCheckpoint {
-  summary: string;
+  checkpoint: S.Checkpoint;
   seq: number;
   compact: boolean;
 }

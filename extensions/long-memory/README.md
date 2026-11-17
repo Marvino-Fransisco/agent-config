@@ -11,6 +11,8 @@ npm install
 ln -s "$PWD/extensions/long-memory" ~/.pi/agent/extensions/long-memory
 ```
 
+Also link `extensions/shared/` beside the extension links, following [Installing symlinked extensions](../../README.md#installing-symlinked-extensions). Pi resolves sibling imports from the installed location, so the shared link is required.
+
 Create the local configuration file once without overwriting an existing one, restrict its permissions, and edit it privately:
 
 ```sh
@@ -49,6 +51,7 @@ The Docker named volume stores the database under `/var/lib/postgresql` inside t
 | --- | --- |
 | `/memory` | Open the statistics dashboard. Tab cycles STATS, SEARCH, LIST, TRASH, DEBUG and SQL; Shift+Tab reverses. Ctrl+S changes scope outside SQL. Arrows select or scroll; Enter runs a query or opens a memory. LIST filters by kind; Ctrl+N/P pages LIST and TRASH. In detail, Ctrl+D asks to trash or permanently purge, Ctrl+H shows history, and Ctrl+R restores from trash. Confirm deletion with `y` or cancel with `n`. STATS offers Ctrl+R to reindex. SQL supports Ctrl+Left/Right to pan. Backspace returns from detail; Esc closes the panel. `/memory` toggles the panel. Narrow terminals use a full-screen fallback. |
 | `/memory list [global\|project\|both] [kind\|-] [offset]` | List 50 recent memories per page with previews and indexing status. Use `-` for all kinds, e.g. `/memory list both - 50`. |
+| `/memory project` | Show the active canonical project name, full path and Git/folder scope without querying the database. |
 | `/memory projects` | List up to 100 registered projects. |
 | `/memory search [--global\|--project] <query>` | Search for up to five memories by semantic similarity; default is global plus current project. |
 | `/memory show <id>` | Show a full memory in global or current-project scope. |
@@ -75,7 +78,7 @@ Global memory holds reusable engineering experience/preferences across projects.
 
 The `long_memory` agent tool supports stats, debug, history, supersede, list kind/offset filters, and a memory kind such as `preference` or `decision`. Each write requires interactive confirmation; it is unavailable without a UI. Retrieved memories are untrusted data. IDs are restricted to global or current-project scope for normal show/update/delete operations. `/memory query` is an explicit read-only view of all four tables, including other projects and revision history; it uses the separate `memory_reader` database role, a read-only transaction, and a statement timeout. Protect its credentials and do not grant that role write privileges or privileged role memberships.
 
-Project identity is the canonical Git checkout root; outside Git it is the canonical working directory. Separate worktrees therefore have separate memory. Moving a checkout changes its identity. Project records are created when a project-scoped memory is saved and remain after memories are deleted.
+Project identity is the canonical Git checkout root; outside Git it is the canonical session working directory. Task memory and long memory share this resolver. The memory panel identifies the project and whether it is a Git repository or folder scope; `/memory project`, mutation confirmations and agent tool results expose the full path. Changing directory in a Bash command or editing another checkout does not switch the memory target. The resolved identity is cached by session directory for this extension runtime; reload Pi after changing repository boundaries on disk. Separate worktrees therefore have separate memory. Moving a checkout changes its identity; use `/memory relink` explicitly rather than expecting automatic migration. Project records are created when a project-scoped memory is saved and remain after memories are deleted. Git discovery errors other than a non-repository directory are reported instead of silently selecting another scope.
 
 Saving trims leading/trailing whitespace and reuses an identical memory in the same scope, even under concurrent saves. Updating to text already stored in that scope is rejected. This is exact-text deduplication, not semantic merging; existing duplicates are not deleted. Re-saving identical text retries indexing. Changed content is archived atomically in `memory_revisions`; identical-content reindexing does not add a revision. Delete moves the memory to trash, preserving its embedding and revision history. Trashed entries older than 30 days are purged when another memory is deleted; `/memory purge` removes one immediately.
 

@@ -2,6 +2,8 @@ import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Input, matchesKey, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type Focusable, type OverlayHandle, type TUI } from "@earendil-works/pi-tui";
 import { debugRetrieval, deleteMemory, getMemory, listMemories, listTrash, memoryHistory, memoryStats, purgeMemory, queryMemory, reindexMemories, searchMemories, TRASH_DAYS, undeleteMemory, type MemoryRow, type MemoryStats, type Scope } from "../src/store.ts";
 
+import { resolveProject, type ProjectIdentity } from "../../shared/project.ts";
+
 const rgb = (r: number, g: number, b: number) => (text: string) => `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
 const BRIGHT = rgb(150, 210, 255);
 const BLUE = rgb(90, 175, 255);
@@ -234,6 +236,12 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
   let contentStart = 0;
   let contentHeight = 0;
   let input = makeInput();
+  let project: ProjectIdentity | undefined;
+  let projectError = "";
+  void resolveProject(ctx.cwd).then((identity) => { project = identity; if (!closed) tui.requestRender(); }).catch((error: unknown) => {
+    projectError = safeText(error instanceof Error ? error.message : String(error));
+    if (!closed) tui.requestRender();
+  });
 
   function makeInput(): Input {
     const prompt = mode === "sql" ? "⌗ " : mode === "list" ? "☰ " : "⌕ ";
@@ -451,7 +459,10 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
     get separators() { return separators; },
     render(width: number): string[] {
       input.focused = focused && mode !== "stats" && mode !== "trash" && !detail;
-      const lines: Line[] = [tabs(width)];
+      let identity = MUTED("Project: resolving…");
+      if (project) identity = BLUE(`Project: ${project.name} · ${project.kind}`);
+      else if (projectError) identity = DANGER(`Project unavailable: ${projectError}`);
+      const lines: Line[] = [{ text: identity }, tabs(width)];
       const scopeText = mode === "sql" ? "All projects · read-only SQL" : SCOPE_LABEL[scope];
       lines.push({ text: `${MUTED("Scope")} ${BRIGHT("●")} ${BLUE(scopeText)}` });
       if (!detail && (mode === "search" || mode === "list" || mode === "debug" || mode === "sql")) {
@@ -464,7 +475,7 @@ export function createPanel(ctx: ExtensionContext, tui: TUI, theme: Theme, done:
       separators = [lines.length];
       lines.push({ text: BLUE("─".repeat(Math.max(1, width))) });
       contentStart = lines.length;
-      contentHeight = Math.max(1, tui.terminal.rows - lines.length - 7);
+      contentHeight = Math.max(1, tui.terminal.rows - lines.length - 6);
       const body: Line[] = [];
       let stateInBody = false;
       if (diagnostics && !detail) body.push({ text: MUTED(diagnostics) });
@@ -665,10 +676,10 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
       invalidate() { content.invalidate(); },
       handleInput: content.handleInput,
       handleMouse(event) {
-        if (event.type === "wheel") return content.handleMouse({ ...event, y: event.y === undefined ? undefined : event.y - 2 });
+        if (event.type === "wheel") return content.handleMouse({ ...event, y: event.y === undefined ? undefined : event.y - 1 });
         if ((event.type === "press" || event.type === "click") && event.button === "left") {
           handle?.focus();
-          if (event.type === "click" && event.y !== undefined) content.handleMouse({ ...event, x: (event.x ?? 0) - 2, y: event.y - 2 });
+          if (event.type === "click" && event.y !== undefined) content.handleMouse({ ...event, x: (event.x ?? 0) - 2, y: event.y - 1 });
           tui.requestRender();
           return { handled: true, focus: true };
         }
@@ -681,7 +692,6 @@ export function createMemoryOverlay(ctx: ExtensionContext, tui: TUI, theme: Them
         const body = content.render(Math.max(1, inner - 2));
         return [
           border("┏") + title + border("━".repeat(Math.max(0, inner - visibleWidth(title))) + "┓"),
-          border("┃") + " ".repeat(inner) + border("┃"),
           ...body.map((line, index) => content.separators.includes(index)
             ? border(`┣${"━".repeat(inner)}┫`)
             : border("┃") + " " + truncateToWidth(line, Math.max(1, inner - 2), "…", true) + " " + border("┃")),

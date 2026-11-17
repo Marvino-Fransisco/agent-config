@@ -1,7 +1,8 @@
 import type { ToolKind } from "./phase/phase.types.ts";
 
-export interface Saved {
-  summary: string;
+import type { HandoffState } from "./compaction/handoff.ts";
+
+export interface Saved extends HandoffState {
   hash: string;
   seq: number;
 }

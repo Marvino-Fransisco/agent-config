@@ -41,7 +41,7 @@ export function installWidget(
       dispose() { if (timer) clearInterval(timer); setRerender(undefined); },
       invalidate() {},
       render(width: number): string[] {
-        const { task, phase: input, percent, thresholds, baseline, pendingMessage } = getState();
+        const { task, phase: input, percent, thresholds, baseline, pendingMessage, pendingIndicator } = getState();
         const phase = derivePhase({
           ...input,
           hasTask: task !== null,
@@ -63,6 +63,7 @@ export function installWidget(
             lines.push(theme.bg("userMessageBg", content + " ".repeat(Math.max(0, width - visibleWidth(content)))));
           }
           lines.push(empty);
+          if (pendingIndicator) lines.push(truncateToWidth(pendingIndicator, width, "…"));
         }
         lines.push(truncateToWidth(status, width, "…"));
         const lvl = contextLevel(percent, thresholds, baseline);

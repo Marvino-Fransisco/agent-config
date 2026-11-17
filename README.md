@@ -6,6 +6,23 @@ In the TUI, a fresh session (startup or `/new` with no messages yet) shows a blu
 
 The separate [long-memory extension](extensions/long-memory/README.md) provides explicit global and project memories with PostgreSQL, pgvector, Gemini embeddings, and a management TUI with statistics, scoped search/list filters, retrieval debug, and details. Writes require confirmation; exact duplicates are reused and content replacements retain revision history. See its README for the additive migration required by existing databases.
 
+Task and long memory share a canonical project target: the session's Git checkout root, or the session directory outside Git. Panels and tool results label that target; `/memory project` and write confirmations show the full path. Editing another repository does not silently change scope. Task handoffs and automatic resume injection use model-scaled estimated-token budgets, preserving essential state and keeping full records on disk. Incompatible reserves, oversized required handoffs and no-progress compaction repeats are reported instead of silently discarding critical context. See [task-memory](extensions/task-memory/README.md#handoff-budgets) for the budget policy and limitations.
+
+## Installing symlinked extensions
+
+The extensions import sibling modules from `extensions/shared/`. When linking individual extensions into `~/.pi/agent/extensions/`, link the shared directory too; otherwise Pi's loader can fail with `Cannot find module '../shared/project.ts'` or a shared-panel import error.
+
+From this repository root, create the link if it is not already present:
+
+```sh
+mkdir -p ~/.pi/agent/extensions
+if [ ! -e ~/.pi/agent/extensions/shared ] && [ ! -L ~/.pi/agent/extensions/shared ]; then
+  ln -s "$PWD/extensions/shared" ~/.pi/agent/extensions/shared
+fi
+```
+
+If `shared` already exists, verify its target instead of overwriting it. Restart Pi or run `/reload` after fixing the link.
+
 ## Scrolling inside tmux
 
 `tmux-scroll.conf` adds wheel routing for fullscreen applications without mouse reporting. With `set -g mouse on`, scrolling over such a pane sends Page Up/Down (one page per wheel event). Applications that request mouse input and tmux copy mode retain native mouse handling. Normal shell panes use tmux scrollback.

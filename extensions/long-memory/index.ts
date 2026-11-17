@@ -6,6 +6,8 @@ import { GUIDELINES, SNIPPET, SUGGEST_PROMPT } from "./src/prompts.ts";
 import { closePools, debugRetrieval, deleteMemory, getMemory, getRevision, listMemories, listProjects, listTrash, memoryHistory, memoryStats, purgeMemory, queryMemory, reindexMemories, relinkProject, restoreRevision, saveMemory, searchMemories, TRASH_DAYS, undeleteMemory, updateMemory, type MemoryRow, type Scope } from "./src/store.ts";
 import { createMemoryOverlay, formatForAgent, formatMemory, formatTable, renderStats, safeText, searchPanel, showText } from "./ui/panel.ts";
 
+import { projectText, resolveProject } from "../shared/project.ts";
+
 const parameters = Type.Object({
   action: Type.Union([Type.Literal("save"), Type.Literal("update"), Type.Literal("supersede"), Type.Literal("restore"), Type.Literal("delete"), Type.Literal("undelete"), Type.Literal("list"), Type.Literal("show"), Type.Literal("search"), Type.Literal("stats"), Type.Literal("debug"), Type.Literal("history")]),
   scope: Type.Optional(Type.Union([Type.Literal("global"), Type.Literal("project"), Type.Literal("both")])),
@@ -21,7 +23,8 @@ const GOOGLE_NOTE = "This text will be sent to Google for embedding.";
 
 async function approve(ctx: ExtensionContext, title: string, detail: string): Promise<void> {
   if (!ctx.hasUI) throw new Error("Explicit user confirmation is required to change long-term memory");
-  if (!(await ctx.ui.confirm(safeText(title), safeText(detail)))) throw new Error("Memory operation cancelled by user");
+  const project = await resolveProject(ctx.cwd);
+  if (!(await ctx.ui.confirm(safeText(title), safeText(`${projectText(project)}\n\n${detail}`)))) throw new Error("Memory operation cancelled by user");
 }
 
 function required(value: string | undefined, name: string): string {
@@ -154,14 +157,16 @@ export default function (pi: ExtensionAPI): void {
         case "debug": text = await debugText(ctx, required(args.query, "query"), args.scope ?? "both", true); break;
         case "history": text = formatForAgent((await memoryHistory(ctx.cwd, required(args.id, "id"))).map((revision) => ({ id: `${args.id}/r${revision.id}`, project_id: null, kind: "revision", content: revision.content, source: revision.source, created_at: revision.replaced_at, updated_at: revision.replaced_at })), "No earlier versions."); break;
       }
-      return { content: [{ type: "text", text }], details: undefined };
+      const project = await resolveProject(ctx.cwd);
+      const scope = args.scope ?? "both";
+      return { content: [{ type: "text", text: `${projectText(project)}\nMemory scope: ${scope}\n\n${text}` }], details: { project: project.root, scope } };
     },
   });
 
-  const completions = ["list", "list global", "list project", "list both", "trash", "projects", "stats", "stats global", "stats project", "search", "search --global", "search --project", "debug", "debug --global", "debug --project", "show", "history", "query", "save", "save global", "save project", "update", "supersede", "restore", "delete", "undelete", "purge", "relink", "reindex", "backup", "suggest", "suggest global", "suggest project"];
+  const completions = ["project", "list", "list global", "list project", "list both", "trash", "projects", "stats", "stats global", "stats project", "search", "search --global", "search --project", "debug", "debug --global", "debug --project", "show", "history", "query", "save", "save global", "save project", "update", "supersede", "restore", "delete", "undelete", "purge", "relink", "reindex", "backup", "suggest", "suggest global", "suggest project"];
 
   pi.registerCommand("memory", {
-    description: "Open memory panel. /memory list | trash | projects | search | debug | stats | show | history | query | save | update | supersede | restore | delete | undelete | purge | relink | reindex | backup | suggest",
+    description: "Open memory panel. /memory list | project | trash | projects | search | debug | stats | show | history | query | save | update | supersede | restore | delete | undelete | purge | relink | reindex | backup | suggest",
     getArgumentCompletions: (prefix: string) => completions.filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
     handler: async (args, ctx) => {
       try {
@@ -177,6 +182,7 @@ export default function (pi: ExtensionAPI): void {
         let title = "Memory";
         let output: string;
         switch (action) {
+          case "project": title = "Active memory project"; output = projectText(await resolveProject(ctx.cwd)); break;
           case "list": {
             const [scope, kind, offset, extra] = rest.split(/\s+/);
             if (extra) throw new Error("Usage: /memory list [global|project|both] [kind|-] [offset]");

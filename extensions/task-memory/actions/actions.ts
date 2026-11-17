@@ -49,6 +49,7 @@ export function applyTaskAction(input: TaskActionInput): TaskActionResult {
 
     case "plan": {
       const task = S.requireActive(file);
+      if (p.mode !== undefined && p.mode !== "replace" && p.mode !== "append") throw new S.MemoryError("plan mode must be replace or append.");
       S.planSteps(task, p.steps ?? [], p.mode ?? "replace", t);
 
       text = task.steps
@@ -61,8 +62,8 @@ export function applyTaskAction(input: TaskActionInput): TaskActionResult {
     case "step": {
       const task = S.requireActive(file);
 
-      if (p.id === undefined || !p.status) {
-        throw new S.MemoryError("step needs id and status.");
+      if (p.id === undefined || (p.status !== "todo" && p.status !== "doing" && p.status !== "done" && p.status !== "skipped")) {
+        throw new S.MemoryError("step needs id and a valid status.");
       }
 
       const r = S.updateStep(task, p.id, p.status, p.evidence, t);
@@ -129,7 +130,7 @@ export function applyTaskAction(input: TaskActionInput): TaskActionResult {
 
       changed = task !== null;
       ck = {
-        summary: S.renderHandoff(task, project, { checkpoint: cp }),
+        checkpoint: cp,
         seq: cp.seq,
         compact: p.compact === true || handoff !== "none",
       };

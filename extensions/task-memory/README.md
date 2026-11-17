@@ -11,7 +11,8 @@ Pi extension that keeps long-running work resumable across context compaction an
   - `archive/`: finished or abandoned tasks
 - **`task` tool** for the model: `start`, `plan`, `step`, `update`, `checkpoint`, `finish`, `show`.
   It enforces one step in progress at a time, evidence before `done`, a final verification plus a docs note at `finish`, and size caps so memory stays short. A missing `action` is inferred when the other fields make it unambiguous.
-- **Handoff at compaction**: before compacting, the agent writes a checkpoint (next action, *Read now* / *Read later* / *Known* files, critical context). The checkpoint becomes the compaction summary. The last min(20k tokens, 5% of the window) stays as raw messages.
+- **Handoff at compaction**: before compacting, the agent writes a checkpoint (next action, *Read now* / *Read later* / *Known* files, critical context) in its own tool call. A prioritized, model-budgeted version becomes the compaction summary; full saved state stays on disk. Required content is never silently cut to fit. Oversized required content, clipped checkpoint fields, stale state, or a checkpoint turn shared with other tools prevent custom compaction and retain the conversation.
+- **Project identity**: task memory and long memory use the same canonical Git checkout root, or canonical session directory outside Git. The task panel and tool results identify the project and full path. Editing a detectable file outside the root warns without changing the target. If legacy task files would resolve to a different root, the extension reports both paths and refuses writes rather than migrating them automatically.
 - **Context thresholds**
   - ≥ 50% by default: warning. The agent writes a handoff and compacts at the next step boundary, or when the run ends.
   - ≥ 75% by default: mandatory. Every tool except `task` is blocked until the handoff exists. After 3 ignored turns, the conversation is retained and the block is lifted; Pi's normal auto-compaction or a subsequent `/compact` can summarize it.
@@ -46,6 +47,16 @@ The task panel stays open while typing and refreshes task memory from disk once 
 
 Both values must satisfy `0 < warning < mandatory < 100`. Command settings persist per checkout and override environment variables. Without saved settings, environment variables override the defaults; an invalid ordering falls back to both defaults. After compaction, thresholds may temporarily be raised above the post-compaction baseline to avoid an immediate repeat. The warning itself requests compaction at the next step boundary, so the mandatory threshold may never be reached.
 
+## Handoff budgets
+
+Budgeting uses Pi's token estimates with a 20% allowance, not a provider tokenizer. Summary content is capped at `min(2000, 4% of the active context window)`. Raw recent messages are capped at `min(effective keepRecentTokens, 5% of the window)`, with no minimum tail size. Both are further constrained by fixed prompt/tool overhead and a combined target five percentage points below the configured warning, minus a 2%-of-window safety margin, and below Pi's automatic compaction threshold. For example, with sufficient room an 8K model allows up to 320 estimated summary tokens and 400 estimated tail tokens; these are ceilings, not guaranteed retained sizes.
+
+The summary preserves the task goal, constraints, active step, next action, critical context, required reads, blockers and resume checks first. Decisions, verification evidence and other references are included only if they fit as whole items. Omitted details remain in the task/project files; the summary points to them for targeted reads. If essential content cannot fit, shorten the checkpoint or use a larger model. A raw tool-call/result group that exceeds the tail budget is omitted as a whole rather than split. Repeated compactions also consider messages retained by the previous compaction.
+
+The same policy applies to direct checkpoints, a fresh checkpoint used by `/compact`, and automatic task/project injection on resume or after Pi's default compaction. Effective per-model `reserveTokens` and `keepRecentTokens` overrides are respected and budgets are recalculated for model changes. Automatic compaction without new work or a relevant state/model/settings change is stopped to avoid retry loops. No budget indicator is added to the UI.
+
+If Pi's effective reserve is at least the model context window, or fixed prompts/tools already exceed the target, the extension reports the incompatible settings instead of repeatedly compacting. Configure an appropriate `compaction.modelOverrides["provider/modelId"]` in Pi settings; the extension does not rewrite those settings. Pi's default summarizer remains a fallback and its output is not hard-capped by the custom handoff summary limit. Token estimates and safety margins cannot guarantee that every provider's exact token count will fit.
+
 ## Files
 
 - `index.ts`: Pi registration, lifecycle hooks, and shared runtime state
@@ -67,6 +78,8 @@ npm test            # unit + hook tests (Pi packages stubbed), no model calls
 npm run typecheck   # tsconfig paths point at the installed Pi release
 ln -s "$PWD/extensions/task-memory" ~/.pi/agent/extensions/task-memory   # install
 ```
+
+Also link `extensions/shared/` beside the extension links, following [Installing symlinked extensions](../../README.md#installing-symlinked-extensions). Pi resolves sibling imports from the installed location, so the shared link is required.
 
 After a Pi upgrade, update the release path in `tsconfig.json`.
 

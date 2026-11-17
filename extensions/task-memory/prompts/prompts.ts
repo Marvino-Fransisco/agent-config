@@ -6,8 +6,8 @@ export const GUIDELINES = [
   "Work one step at a time: step doing -> implement -> verify -> step done with evidence (command + result, or 'manual: <reason>'). Never mark a step done without verifying it.",
   "Record as you go, tersely (facts, not narrative): decisions with why, blockers as issues, and durable repo knowledge via update project.* (decisions, conventions, verify commands, key paths).",
   "Check project memory and recorded decisions before re-exploring the repo or reconsidering a settled choice.",
-  "Handoffs (task checkpoint): next = the concrete next action; readNow = only what that action needs, with line ranges; readLater = files for later steps (tag step); known = one-line facts copied from tool output (never from memory) so a file needs no re-read.",
-  "Finish with a final verification (re-check any value carried over from a handoff), then task finish (evidence + docs). Update README/CHANGELOG only if user-visible behavior changed; never put agent notes in user docs.",
+  "Handoffs (task checkpoint): next = the concrete next action; readNow = only what that action needs, with line ranges; readLater = files for later steps (tag step); known = one-line facts copied from tool output (never from memory) so a file needs no re-read. Include unfinished user requirements in critical context. Call task checkpoint alone, not alongside other tools; required content must fit the active model's handoff limit.",
+  "Finish with a final verification (re-check any value carried over from a handoff), then task finish (evidence + docs).",
 ];
 
 const FILES = (touched: string): string =>

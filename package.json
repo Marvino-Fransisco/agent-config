@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/register.mjs --test tests/*.test.ts"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/register.mjs --test tests/*.test.ts tests/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

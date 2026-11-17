@@ -56,6 +56,8 @@ function harness(mode: "tui" | "print") {
   };
   const git = { head: "abc123", branch: "main", status: "", diff: "" };
   const messages: Array<{ content: string }> = [];
+  const branch: any[] = [];
+  const settings: any = {};
   const pi = {
     events,
     on: (name: string, h: Handler) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); return () => {}; },
@@ -64,7 +66,8 @@ function harness(mode: "tui" | "print") {
     registerCommand: (name: string, c: typeof command) => { assert.notEqual(name, "close"); if (name === "task") command = c; },
     registerShortcut: (_key: string, s: typeof shortcut) => { shortcut = s; },
     exec: async (_cmd: string, args: string[]) => ({ code: 0, stdout: args.includes("rev-parse") ? git.head : args.includes("branch") ? git.branch : args.includes("diff") ? git.diff : git.status, stderr: "", killed: false }),
-    getSettings: () => ({}),
+    getSettings: () => settings,
+    appendEntry: (customType: string, data: unknown) => { branch.push({ type: "custom", id: `entry-${branch.length}`, customType, data }); },
     sendMessage: (message: { content: string }) => { messages.push(message); },
     sendUserMessage: () => {},
   };
@@ -75,10 +78,14 @@ function harness(mode: "tui" | "print") {
       widget = factory(tui, { fg: (_color: string, text: string) => text });
     }, confirm: async () => true },
     isIdle: () => true,
-    sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
+    sessionManager: {
+      getBranch: () => branch,
+      getLeafId: () => branch.at(-1)?.id ?? null,
+      buildSessionProjection: () => ({ messages: branch.flatMap((entry) => entry.message ? [entry.message] : []), entries: branch.map((entry) => ({ sourceEntry: entry, messages: entry.message ? [entry.message] : [] })) }),
+    },
     getSystemPrompt: () => "system",
     getContextUsage: () => ({ tokens: null, contextWindow: 200000, percent: usage.percent }),
-    model: { id: "test-model", reasoning: true, contextWindow: 200000 },
+    model: { provider: "test", id: "test-model", reasoning: true, contextWindow: 200000 },
     thinkingLevel: "medium",
   };
   extension(pi as never);
@@ -88,7 +95,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { api: pi, emit, call, usage, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { api: pi, emit, call, usage, settings, branch, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("widget reflects task changes made outside this session", async () => {
@@ -121,7 +128,7 @@ test("task notes update from disk, scroll and close on escape", async () => {
   assert.equal(h.isFocused(), true);
   h.panel()!.render(50);
   assert.deepEqual(h.panel()!.handleMouse({ type: "wheel", button: "none", wheelDelta: 1 }), { handled: true });
-  assert.doesNotMatch(h.panel()!.render(50).join("\n"), /## Active task/);
+  assert.match(h.panel()!.render(50).join("\n"), /↕ 2–17/);
   h.panel()!.handleInput("escape");
   assert.equal(h.panel(), undefined);
   await h.command("");
@@ -414,6 +421,105 @@ test("threshold command validates, persists and applies independent values", asy
   assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-warn");
   h.usage.percent = 65;
   assert.equal((await h.emit("turn_end", busy))?.entries?.[0]?.customType, "task-memory-must");
+});
+
+test("oversized required handoffs do not overwrite the saved checkpoint", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  h.ctx.model.contextWindow = 8000;
+  h.settings.compaction = { reserveTokens: 512 };
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.call({ action: "checkpoint", next: "saved next" });
+  const file = path.join(h.cwd, ".pi", "memory", "task.json");
+  const before = fs.readFileSync(file, "utf8");
+  await assert.rejects(h.call({ action: "checkpoint", next: "unsafe next", context: "critical ".repeat(130), compact: true }), /Required handoff content/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+test("compaction rejects clipped checkpoint fields without saving partial critical context", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  const file = path.join(h.cwd, ".pi", "memory", "task.json");
+  const before = fs.readFileSync(file, "utf8");
+  await assert.rejects(h.call({ action: "checkpoint", next: "continue", context: "x".repeat(1300), compact: true }), /storage limits/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+test("compaction preserves context when state changes or other tools share the checkpoint turn", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.call({ action: "checkpoint", next: "continue", compact: true });
+  await h.call({ action: "update", notes: ["state changed"] });
+  assert.equal(await h.emit("turn_end", busy), undefined);
+  assert.match(h.notifications.at(-1)!, /state changed after/);
+  await h.call({ action: "checkpoint", next: "continue", compact: true });
+  assert.equal(await h.emit("turn_end", { ...busy, toolResults: [{ toolName: "read" }, { toolName: "task" }] }), undefined);
+  assert.match(h.notifications.at(-1)!, /shared a turn/);
+});
+
+test("manual fresh handoffs use a budgeted retain-none marker instead of Pi's large cutoff", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.call({ action: "checkpoint", next: "continue" });
+  const result = await h.emit("session_before_compact", { reason: "manual", preparation: { firstKeptEntryId: "unsafe-old-cut", tokensBefore: 100, settings: { enabled: true, reserveTokens: 16384, keepRecentTokens: 0 } } }) as { compaction?: { firstKeptEntryId: string; summary: string } };
+  assert.equal(h.branch.at(-1)?.customType, "task-memory-retain-none");
+  assert.equal(result.compaction?.firstKeptEntryId, h.branch.at(-1)?.id);
+  assert.match(result.compaction!.summary, /Next: continue/);
+});
+
+test("automatic compaction does not repeat without new work and invalid reserves fail clearly", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  const event = { reason: "threshold", preparation: {} };
+  assert.equal(await h.emit("session_before_compact", event), undefined);
+  assert.equal((await h.emit("session_before_compact", event) as { cancel?: boolean })?.cancel, true);
+  h.branch.push({ type: "message", id: "new-request", message: { role: "user", content: "continue" } });
+  assert.equal(await h.emit("session_before_compact", event), undefined);
+  h.ctx.model.contextWindow = 8000;
+  assert.equal((await h.emit("session_before_compact", event) as { cancel?: boolean })?.cancel, true);
+  assert.match(h.notifications.at(-1)!, /reserveTokens/);
+});
+
+test("saved-state injection is bounded and recalculated when the model changes", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "T", goal: "G" });
+  await h.call({ action: "update", project: { notes: Array.from({ length: 10 }, (_, i) => `${i}: ${"optional ".repeat(30)}`) } });
+  h.ctx.model.contextWindow = 16000;
+  h.settings.compaction = { reserveTokens: 512 };
+  await h.emit("session_start");
+  const first = (await h.emit("before_agent_start"))?.message?.content ?? "";
+  assert.ok(first.length > 0);
+  assert.ok(Math.ceil((first.length + 2) / 4) * 1.2 <= 640);
+  const full = fs.readFileSync(path.join(h.cwd, ".pi", "memory", "project.json"), "utf8");
+  assert.ok(full.includes("optional"));
+  h.ctx.model.contextWindow = 8000;
+  await h.emit("model_select");
+  const small = (await h.emit("before_agent_start"))?.message?.content ?? "";
+  assert.ok(small.length > 0);
+  assert.ok(Math.ceil((small.length + 2) / 4) * 1.2 <= 320);
+  assert.equal(fs.readFileSync(path.join(h.cwd, ".pi", "memory", "project.json"), "utf8"), full);
+});
+
+test("external edits warn without switching projects and legacy task state is not migrated", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.emit("tool_execution_start", { toolName: "edit", toolCallId: "outside", args: { path: path.join(h.cwd, "..", "outside.ts") } });
+  await h.emit("tool_execution_end", { toolName: "edit", toolCallId: "outside", isError: false });
+  assert.ok(h.notifications.some((message) => message.includes("Memory still belongs to")));
+  await h.call({ action: "start", title: "Original task", goal: "G" });
+  const original = fs.readFileSync(path.join(h.cwd, ".pi", "memory", "task.json"), "utf8");
+  const nested = path.join(h.cwd, "nested");
+  fs.mkdirSync(nested);
+  h.ctx.cwd = nested;
+  await h.emit("session_start");
+  assert.match(h.notifications.at(-1)!, /No files were moved/);
+  await assert.rejects(h.call({ action: "show" }), /existing state belongs to/);
+  assert.equal(fs.readFileSync(path.join(h.cwd, ".pi", "memory", "task.json"), "utf8"), original);
+  assert.equal(fs.existsSync(path.join(nested, ".pi", "memory", "task.json")), false);
 });
 
 test("print mode: no extra turn or lossy compaction after the final answer", async () => {
