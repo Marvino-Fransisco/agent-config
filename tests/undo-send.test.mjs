@@ -46,7 +46,7 @@ test("preview shows a countdown and is cleared on cancellation", async () => {
   const { handler, ctx, getWidget, input: key } = setup();
   const result = handler(input, ctx);
   assert.equal(getWidget()[0], "[bg]hello[/bg]");
-  assert.match(getWidget()[1], /Esc to edit · sending.*1\.5s/);
+  assert.match(getWidget()[1], /Esc to cancel · sending.*1\.5s/);
   await new Promise((resolve) => setTimeout(resolve, 250));
   assert.ok(Number(getWidget()[1].match(/([\d.]+)s$/)[1]) < 1.5);
   key("escape");
@@ -58,7 +58,7 @@ test("task widget receives and clears the pending message", async () => {
   const { handler, ctx, events, getWidget, input: key } = setup(true);
   const result = handler(input, ctx);
   assert.equal(events[0].text, "hello");
-  assert.match(events[0].indicator, /Esc to edit/);
+  assert.match(events[0].indicator, /Esc to cancel/);
   assert.equal(getWidget(), undefined);
   key("escape");
   await result;
