@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { matchesKey } from "@earendil-works/pi-tui";
+import { paintPendingMessage } from "../shared/pending-message.ts";
 
 const UNDO_WINDOW_MS = 1500;
 
@@ -13,11 +14,11 @@ export default function (pi: ExtensionAPI) {
       const remaining = Math.max(0, deadline - performance.now());
       const filled = Math.ceil((remaining / UNDO_WINDOW_MS) * 12);
       const bar = "━".repeat(filled) + "─".repeat(12 - filled);
-      pending.indicator = `${ctx.ui.theme.fg("accent", "Esc")} ${ctx.ui.theme.fg("muted", "to edit · sending")} ${ctx.ui.theme.fg("accent", bar)} ${ctx.ui.theme.fg("muted", `${(remaining / 1000).toFixed(1)}s`)}`;
+      pending.indicator = `${ctx.ui.theme.fg("accent", "Esc")} ${ctx.ui.theme.fg("muted", "to edit · sending")} \x1b[38;2;90;175;255m${bar}\x1b[39m ${ctx.ui.theme.fg("muted", `${(remaining / 1000).toFixed(1)}s`)}`;
       pi.events.emit("undo-send:pending", pending);
       if (!pending.handled) {
         ctx.ui.setWidget("undo-send", [
-          ...event.text.split("\n").map((line) => ctx.ui.theme.bg("userMessageBg", line)),
+          ...event.text.split("\n").map(paintPendingMessage),
           pending.indicator,
         ]);
       }

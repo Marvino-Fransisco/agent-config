@@ -15,7 +15,7 @@ function setup(integrated = false) {
   const ctx = {
     mode: "tui",
     ui: {
-      theme: { bg: (_color, text) => `[bg]${text}[/bg]`, fg: (_color, text) => text },
+      theme: { fg: (_color, text) => text },
       setWidget: (_name, value) => { widget = value; },
       getEditorText: () => editor,
       setEditorText: (text) => { editor = text; },
@@ -45,8 +45,8 @@ test("Escape restores the message and preserves the editor draft", async () => {
 test("preview shows a countdown and is cleared on cancellation", async () => {
   const { handler, ctx, getWidget, input: key } = setup();
   const result = handler(input, ctx);
-  assert.equal(getWidget()[0], "[bg]hello[/bg]");
-  assert.match(getWidget()[1], /Esc to cancel · sending.*1\.5s/);
+  assert.equal(getWidget()[0], "\x1b[48;2;122;92;20;38;2;255;245;214mhello\x1b[39;49m");
+  assert.equal(getWidget()[1], `Esc to edit · sending \x1b[38;2;90;175;255m${"━".repeat(12)}\x1b[39m 1.5s`);
   await new Promise((resolve) => setTimeout(resolve, 250));
   assert.ok(Number(getWidget()[1].match(/([\d.]+)s$/)[1]) < 1.5);
   key("escape");
@@ -58,7 +58,7 @@ test("task widget receives and clears the pending message", async () => {
   const { handler, ctx, events, getWidget, input: key } = setup(true);
   const result = handler(input, ctx);
   assert.equal(events[0].text, "hello");
-  assert.match(events[0].indicator, /Esc to cancel/);
+  assert.match(events[0].indicator, /Esc to edit/);
   assert.equal(getWidget(), undefined);
   key("escape");
   await result;

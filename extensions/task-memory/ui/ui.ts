@@ -1,5 +1,6 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type TUI } from "@earendil-works/pi-tui";
+import { paintPendingMessage } from "../../shared/pending-message.ts";
 import { contextLevel, derivePhase, PHASE_ICON } from "../phase/phase.ts";
 import type { WidgetState } from "./ui.types.ts";
 import { statusLine } from "../state/state.ts";
@@ -56,11 +57,11 @@ export function installWidget(
         const lines: string[] = [];
         if (pendingMessage && width > 0) {
           const padding = width > 2 ? 1 : 0;
-          const empty = theme.bg("userMessageBg", " ".repeat(width));
+          const empty = paintPendingMessage(" ".repeat(width));
           lines.push(empty);
           for (const line of pendingMessage.split("\n").flatMap((text) => wrapTextWithAnsi(text, width - padding * 2))) {
             const content = " ".repeat(padding) + line;
-            lines.push(theme.bg("userMessageBg", content + " ".repeat(Math.max(0, width - visibleWidth(content)))));
+            lines.push(paintPendingMessage(content + " ".repeat(Math.max(0, width - visibleWidth(content)))));
           }
           lines.push(empty);
           if (pendingIndicator) lines.push(truncateToWidth(pendingIndicator, width, "…"));
