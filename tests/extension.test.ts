@@ -75,7 +75,8 @@ function harness(mode: "tui" | "print") {
     cwd, mode, hasUI: mode === "tui",
     ui: { notify: (message: string) => { notifications.push(message); }, setWidget: (name: string, factory: (tui: unknown, theme: unknown) => { render: (width: number) => string[] }, options?: { placement: string }) => {
       if (name === "task-memory") assert.equal(options?.placement, "aboveEditor");
-      widget = factory(tui, { fg: (_color: string, text: string) => text });
+      const plain = (_color: string, text: string) => text;
+      widget = factory(tui, { fg: plain, bg: plain });
     }, confirm: async () => true },
     isIdle: () => true,
     sessionManager: {
@@ -97,6 +98,26 @@ function harness(mode: "tui" | "print") {
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
   return { api: pi, emit, call, usage, settings, branch, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
+
+test("task widget separates the abort and undo-send prompts from its status", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  const idle = h.widgetLines()[0];
+  assert.match(idle, /idle/);
+  const prompt = { render: (width: number) => [`Abort current run? (${width})`], handled: false };
+  h.events.emit("ui:abort-prompt", prompt);
+  assert.equal(prompt.handled, true);
+  assert.deepEqual(h.widgetLines().slice(0, 3), ["Abort current run? (120)", "", idle]);
+  h.events.emit("ui:abort-prompt", { render: undefined, handled: false });
+  assert.deepEqual(h.widgetLines(), [idle]);
+
+  const pending = { text: "draft", indicator: "Esc to edit", handled: false };
+  h.events.emit("undo-send:pending", pending);
+  assert.equal(pending.handled, true);
+  assert.deepEqual(h.widgetLines().slice(-3), ["Esc to edit", "", idle]);
+  h.events.emit("undo-send:pending", { text: undefined, indicator: "", handled: false });
+  assert.deepEqual(h.widgetLines(), [idle]);
+});
 
 test("widget reflects task changes made outside this session", async () => {
   const h = harness("tui");

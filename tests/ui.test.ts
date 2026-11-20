@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import extension from "../extensions/ui/index.ts";
+import { PipeCursorEditor } from "../extensions/ui/editor/pipe-cursor-editor.ts";
 import { contextReport, registerContextCommand } from "../extensions/ui/context.ts";
 import { registerDashboard } from "../extensions/ui/dashboard.ts";
 import { createNotes } from "../extensions/task-memory/ui/notes.ts";
@@ -11,22 +12,31 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   let footer: any;
   let widget: any;
   let widgetPlacement: string | undefined;
+  let placeAbortPrompt: ((prompt: { render?: (width: number) => string[]; handled: boolean }) => void) | undefined;
   const footerData = { getGitBranch: () => "main", onBranchChange: () => () => {} };
   const ctx = {
     mode: "tui",
     ui: {
       setWorkingIndicator: () => {},
-      setEditorComponent: (factory: (...args: unknown[]) => unknown) => { editor = factory({}, {}, {}); },
+      setEditorComponent: (factory: (...args: unknown[]) => unknown) => { editor = factory({ requestRender() {} }, {}, { matches: (data: string) => data === "escape" }); },
       setFooter: (factory: (...args: unknown[]) => unknown) => { footer = factory({}, {}, footerData); },
       setWidget: (_name: string, factory: (...args: unknown[]) => unknown, options: { placement: string }) => { widget = factory({ requestRender() {} }, {}); widgetPlacement = options.placement; },
       setHeader: () => {},
     },
     getContextUsage: () => ({ percent: 30 }),
+    isIdle: () => false,
     sessionManager: { getCwd: () => "/project", getBranch: () => [] },
     model: { id: "test-model", reasoning: true },
     thinkingLevel: "medium",
   };
-  extension({ registerCommand: () => {}, registerShortcut: () => {}, getCommands: () => [], on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); } } as never);
+  extension({
+    registerCommand: () => {}, registerShortcut: () => {}, getCommands: () => [],
+    on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); },
+    events: {
+      on: () => () => {},
+      emit: (name: string, data: any) => { if (name === "ui:abort-prompt") placeAbortPrompt?.(data); },
+    },
+  } as never);
   handlers.get("session_start")!({}, ctx);
   editor.lines = ["───", "input", "───", "suggestion"];
   editor.autocomplete = true;
@@ -36,6 +46,54 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   assert.match(row, /^\/project \(main\) +test-model • medium$/);
   assert.equal(row.length, 100);
   assert.equal(widgetPlacement, "belowEditor");
+  editor.autocomplete = false;
+  editor.handleInput("escape");
+  assert.match(editor.render(80)[0], /Abort current run/);
+  handlers.get("agent_settled")!({}, ctx);
+  assert.doesNotMatch(editor.render(80).join("\n"), /Abort current run/);
+
+  let taskPrompt: ((width: number) => string[]) | undefined;
+  placeAbortPrompt = (prompt) => { taskPrompt = prompt.render; prompt.handled = true; };
+  editor.handleInput("escape");
+  assert.match(taskPrompt?.(80)[0] ?? "", /Abort current run/);
+  assert.doesNotMatch(editor.render(80).join("\n"), /Abort current run/);
+  handlers.get("agent_settled")!({}, ctx);
+  assert.equal(taskPrompt, undefined);
+});
+
+test("only Enter confirms abort; dismissing or typing keeps the run and draft intact", () => {
+  let idle = false;
+  let aborts = 0;
+  const editor = new PipeCursorEditor(
+    { isIdle: () => idle, abort: () => { aborts++; } },
+    { requestRender() {} } as never,
+    {} as never,
+    { matches: (data: string) => data === "escape" } as never,
+  );
+  editor.handleInput("escape");
+  assert.equal(aborts, 0);
+  assert.match(editor.render(80).join("\n"), /Enter to abort · Esc to keep running/);
+  editor.handleInput("escape");
+  assert.deepEqual(editor.render(80), []);
+  editor.handleInput("escape");
+  editor.handleInput("x");
+  assert.equal((editor as any).lastInput, "x");
+  assert.deepEqual(editor.render(80), []);
+  editor.handleInput("enter");
+  assert.equal(aborts, 0);
+  editor.handleInput("escape");
+  editor.handleInput("enter");
+  assert.equal(aborts, 1);
+  assert.deepEqual(editor.render(80), []);
+
+  editor.handleInput("escape");
+  idle = true;
+  editor.handleInput("enter");
+  assert.equal(aborts, 1);
+  assert.equal((editor as any).lastInput, "enter");
+  editor.handleInput("escape");
+  assert.equal((editor as any).lastInput, "escape");
+  assert.deepEqual(editor.render(80), []);
 });
 
 test("fresh session dashboard is centered, runs actions and slides away on the first message", (t) => {

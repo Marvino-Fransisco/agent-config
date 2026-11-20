@@ -9,4 +9,5 @@ export interface WidgetState {
   baseline?: number;
   pendingMessage?: string;
   pendingIndicator?: string;
+  renderAbortPrompt?: (width: number) => string[];
 }

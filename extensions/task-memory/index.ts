@@ -44,7 +44,15 @@ export default function (pi: ExtensionAPI) {
   let pendingInject: PendingInjection | undefined;
   let pendingMessage: string | undefined;
   let pendingIndicator: string | undefined;
+  let renderAbortPrompt: ((width: number) => string[]) | undefined;
 
+  pi.events?.on("ui:abort-prompt", (data) => {
+    if (!rerender || ctxRef?.mode !== "tui") return;
+    const prompt = data as { render?: (width: number) => string[]; handled: boolean };
+    renderAbortPrompt = prompt.render;
+    prompt.handled = true;
+    rerender();
+  });
   pi.events?.on("undo-send:pending", (data) => {
     if (!rerender || ctxRef?.mode !== "tui") return;
     const pending = data as { text?: string; indicator?: string; handled: boolean };
@@ -175,6 +183,7 @@ export default function (pi: ExtensionAPI) {
     pendingInject = undefined;
     pendingMessage = undefined;
     pendingIndicator = undefined;
+    renderAbortPrompt = undefined;
     scratchSeq = 0;
     lastAutoCompaction = undefined;
     gitBaseline = undefined;
@@ -324,7 +333,7 @@ export default function (pi: ExtensionAPI) {
         active: [...active.values()].map((a) => a.kind), last: lastKind,
       },
       percent: ctxRef ? pct(ctxRef) : null,
-      thresholds: th, baseline, pendingMessage, pendingIndicator,
+      thresholds: th, baseline, pendingMessage, pendingIndicator, renderAbortPrompt,
     }), (callback) => { rerender = callback; }, (tui, theme) => {
       notes?.close();
       notes = createNotes(tui, theme, () => {

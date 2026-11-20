@@ -42,7 +42,7 @@ export function installWidget(
       dispose() { if (timer) clearInterval(timer); setRerender(undefined); },
       invalidate() {},
       render(width: number): string[] {
-        const { task, phase: input, percent, thresholds, baseline, pendingMessage, pendingIndicator } = getState();
+        const { task, phase: input, percent, thresholds, baseline, pendingMessage, pendingIndicator, renderAbortPrompt } = getState();
         const phase = derivePhase({
           ...input,
           hasTask: task !== null,
@@ -66,6 +66,8 @@ export function installWidget(
           lines.push(empty);
           if (pendingIndicator) lines.push(truncateToWidth(pendingIndicator, width, "…"));
         }
+        lines.push(...(renderAbortPrompt?.(width) ?? []));
+        if (lines.length) lines.push("");
         lines.push(truncateToWidth(status, width, "…"));
         const lvl = contextLevel(percent, thresholds, baseline);
 

@@ -1,8 +1,47 @@
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { matchesKey, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+
+const BLUE_RAIL = "\x1b[38;2;90;175;255m│\x1b[39m ";
 
 export class PipeCursorEditor extends CustomEditor {
-	constructor(...args: ConstructorParameters<typeof CustomEditor>) {
+	private confirmAbort: "inline" | "widget" | undefined;
+	private readonly run: Pick<ExtensionContext, "isIdle" | "abort"> & {
+		placeAbortPrompt?: (render?: (width: number) => string[]) => boolean;
+	};
+	private readonly bindings: ConstructorParameters<typeof CustomEditor>[2];
+
+	constructor(run: PipeCursorEditor["run"], ...args: ConstructorParameters<typeof CustomEditor>) {
 		super(...args);
+		this.run = run;
+		this.bindings = args[2];
+	}
+
+	clearAbortConfirmation(): void {
+		if (!this.confirmAbort) return;
+		const inWidget = this.confirmAbort === "widget";
+		this.confirmAbort = undefined;
+		if (inWidget) this.run.placeAbortPrompt?.();
+		this.tui.requestRender();
+	}
+
+	handleInput(data: string): void {
+		const interrupt = this.bindings.matches(data, "app.interrupt");
+		if (this.confirmAbort) {
+			this.clearAbortConfirmation();
+			if (!this.run.isIdle()) {
+				if (matchesKey(data, "enter")) {
+					this.run.abort();
+					return;
+				}
+				if (interrupt || matchesKey(data, "escape")) return;
+			}
+		}
+		if (interrupt && !this.isShowingAutocomplete() && !this.run.isIdle()) {
+			this.confirmAbort = this.run.placeAbortPrompt?.((width) => this.renderAbortPrompt(width)) ? "widget" : "inline";
+			this.tui.requestRender();
+			return;
+		}
+		super.handleInput(data);
 	}
 
 	render(width: number): string[] {
@@ -38,7 +77,15 @@ export class PipeCursorEditor extends CustomEditor {
 			}
 		}
 
-		return lines;
+		if (this.confirmAbort && this.run.isIdle()) this.confirmAbort = undefined;
+		return this.confirmAbort === "inline" ? [...this.renderAbortPrompt(width), ...lines] : lines;
+	}
+
+	private renderAbortPrompt(width: number): string[] {
+		if (!this.confirmAbort || width <= 2 || this.run.isIdle()) return [];
+		const heading = wrapTextWithAnsi("Abort current run?", width - 2).map((line) => `${BLUE_RAIL}\x1b[1m${line}\x1b[22m`);
+		const actions = wrapTextWithAnsi("Enter to abort · Esc to keep running", width - 2).map((line) => BLUE_RAIL + line);
+		return [...heading, ...actions];
 	}
 }
 

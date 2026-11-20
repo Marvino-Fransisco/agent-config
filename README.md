@@ -8,6 +8,8 @@ The separate [long-memory extension](extensions/long-memory/README.md) provides 
 
 Task and long memory share a canonical project target: the session's Git checkout root, or the session directory outside Git. Panels and tool results label that target; `/memory project` and write confirmations show the full path. Editing another repository does not silently change scope. Task handoffs and automatic resume injection use model-scaled estimated-token budgets, preserving essential state and keeping full records on disk. Incompatible reserves, oversized required handoffs and no-progress compaction repeats are reported instead of silently discarding critical context. See [task-memory](extensions/task-memory/README.md#handoff-budgets) for the budget policy and limitations.
 
+In the TUI, `undo-send` previews a submitted draft for 1.5 seconds. Press Escape during the blue countdown to return it to the editor. After the agent starts, press Escape in the editor to show the abort prompt, then Enter to stop the run or Escape again to keep it running.
+
 ## Installing symlinked extensions
 
 The extensions import sibling modules from `extensions/shared/`. When linking individual extensions into `~/.pi/agent/extensions/`, link the shared directory too; otherwise Pi's loader can fail with `Cannot find module '../shared/project.ts'` or a shared-panel import error.

@@ -11,6 +11,8 @@ export function findCutPoint(_entries, startIndex) {
 }
 
 export class CustomEditor {
+  constructor(tui) { this.tui = tui; }
+  handleInput(data) { this.lastInput = data; }
   render() { return this.lines ?? []; }
   isShowingAutocomplete() { return this.autocomplete ?? false; }
 }
