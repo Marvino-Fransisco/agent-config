@@ -16,6 +16,11 @@ const stubs = new URL("./stubs.mjs", import.meta.url).href;
 
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === "@earendil-works/pi-agent-core" ||
+        (specifier === "@earendil-works/pi-tui" && context.parentURL?.includes("/extensions/tutor/") && !context.parentURL.endsWith("/split.ts"))) {
+      return next(specifier, { ...context, parentURL: anchor });
+    }
+    if (context.parentURL?.startsWith(new URL("./node_modules/", anchor).href)) return next(specifier, context);
     if (specifier.startsWith("@earendil-works/")) return { url: stubs, shortCircuit: true };
     if (specifier === "typebox" || specifier.startsWith("typebox/")) return next(specifier, { ...context, parentURL: anchor });
     return next(specifier, context);

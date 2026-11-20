@@ -56,6 +56,7 @@ function harness(mode: "tui" | "print") {
   };
   const git = { head: "abc123", branch: "main", status: "", diff: "" };
   const messages: Array<{ content: string }> = [];
+  const userMessages: string[] = [];
   const branch: any[] = [];
   const settings: any = {};
   const pi = {
@@ -69,7 +70,7 @@ function harness(mode: "tui" | "print") {
     getSettings: () => settings,
     appendEntry: (customType: string, data: unknown) => { branch.push({ type: "custom", id: `entry-${branch.length}`, customType, data }); },
     sendMessage: (message: { content: string }) => { messages.push(message); },
-    sendUserMessage: () => {},
+    sendUserMessage: (text: string) => { userMessages.push(text); },
   };
   const ctx = {
     cwd, mode, hasUI: mode === "tui",
@@ -96,7 +97,7 @@ function harness(mode: "tui" | "print") {
     return r as Result;
   };
   const call = (args: Record<string, unknown>) => tool!.execute("id", tool!.prepareArguments(args), undefined, undefined, ctx);
-  return { api: pi, emit, call, usage, settings, branch, cwd, terminal, notifications, git, messages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
+  return { api: pi, emit, call, usage, settings, branch, cwd, terminal, notifications, git, messages, userMessages, events, ctx, widgetLines: () => widget!.render(120), command: (args: string) => command!.handler(args, ctx), panel: () => panel, focus: () => shortcut!.handler(ctx), isFocused: () => focused, visible: (width: number, height: number) => visible!(width, height) };
 }
 
 test("task widget separates the abort and undo-send prompts from its status", async () => {
@@ -509,6 +510,7 @@ test("saved-state injection is bounded and recalculated when the model changes",
   await h.emit("session_start");
   await h.call({ action: "start", title: "T", goal: "G" });
   await h.call({ action: "update", project: { notes: Array.from({ length: 10 }, (_, i) => `${i}: ${"optional ".repeat(30)}`) } });
+  await h.call({ action: "checkpoint", next: "Review project notes" });
   h.ctx.model.contextWindow = 16000;
   h.settings.compaction = { reserveTokens: 512 };
   await h.emit("session_start");
@@ -520,9 +522,52 @@ test("saved-state injection is bounded and recalculated when the model changes",
   h.ctx.model.contextWindow = 8000;
   await h.emit("model_select");
   const small = (await h.emit("before_agent_start"))?.message?.content ?? "";
-  assert.ok(small.length > 0);
+  assert.match(small, /Next: Review project notes/);
   assert.ok(Math.ceil((small.length + 2) / 4) * 1.2 <= 320);
   assert.equal(fs.readFileSync(path.join(h.cwd, ".pi", "memory", "project.json"), "utf8"), full);
+});
+
+test("resume budgets projected message content without counting tool metadata", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "Resume with tool metadata", goal: "G" });
+  await h.call({ action: "checkpoint", next: "Continue" });
+  h.ctx.model.contextWindow = 8000;
+  h.settings.compaction = { reserveTokens: 512 };
+  h.branch.push({ type: "message", id: "tool", message: {
+    role: "toolResult", content: [{ type: "text", text: "Short tool output" }], details: { largeMetadata: "x".repeat(100_000) },
+  } });
+  await h.emit("model_select");
+  assert.match((await h.emit("before_agent_start"))?.message?.content ?? "", /Task: Resume with tool metadata/);
+});
+
+test("crowded branches skip automatic injection without a warning or changing saved state", async () => {
+  const h = harness("tui");
+  await h.emit("session_start");
+  await h.call({ action: "start", title: "Resume after compaction", goal: "G" });
+  const file = path.join(h.cwd, ".pi", "memory", "task.json");
+  const saved = fs.readFileSync(file, "utf8");
+  h.ctx.model.contextWindow = 8000;
+  h.settings.compaction = { reserveTokens: 512 };
+  h.branch.push({ type: "message", id: "large", message: { role: "user", content: "x".repeat(20_000) } });
+  const noticeCount = h.notifications.length;
+  await h.emit("session_tree");
+  assert.equal(await h.emit("before_agent_start"), undefined);
+  h.branch[0].message.content = "x".repeat(11_300);
+  await h.emit("model_select");
+  assert.equal(await h.emit("before_agent_start"), undefined);
+  await h.emit("session_compact");
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.notifications.length, noticeCount);
+  await h.command("resume");
+  assert.match(h.notifications.at(-1) ?? "", /does not fit the current context budget/);
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.userMessages.length, 0);
+  assert.equal(fs.readFileSync(file, "utf8"), saved);
+  h.branch.length = 0;
+  await h.emit("session_compact");
+  assert.match(h.messages.at(-1)?.content ?? "", /Task: Resume after compaction/);
+  assert.equal(fs.readFileSync(file, "utf8"), saved);
 });
 
 test("external edits warn without switching projects and legacy task state is not migrated", async () => {

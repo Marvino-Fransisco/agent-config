@@ -46,6 +46,12 @@ const gradient = (row: number, text: string) => {
 
 export function registerDashboard(pi: ExtensionAPI, getFooterData: () => ReadonlyFooterDataProvider | undefined): void {
 	let collapse: (() => void) | undefined;
+	let hide: (() => void) | undefined;
+	pi.events?.on?.("ui:tutor:split", () => {
+		hide?.();
+		hide = undefined;
+		collapse = undefined;
+	});
 
 	const available = () => {
 		const names = new Set(pi.getCommands().map((c) => c.name));
@@ -61,6 +67,7 @@ export function registerDashboard(pi: ExtensionAPI, getFooterData: () => Readonl
 
 	pi.on("session_start", (event, ctx) => {
 		collapse = undefined;
+		hide = undefined;
 		if (ctx.mode !== "tui") return;
 		const fresh = (event.reason === "startup" || event.reason === "new")
 			&& !ctx.sessionManager.getBranch().some((e) => e.type === "message");
@@ -71,6 +78,7 @@ export function registerDashboard(pi: ExtensionAPI, getFooterData: () => Readonl
 		ctx.ui.setHeader((tui) => {
 			const dashboard = showDashboard(tui, () => rows(pi, ctx, getFooterData, available()), (action) => run(ctx, action));
 			collapse = dashboard.collapse;
+			hide = dashboard.hide;
 			return { render: () => [], invalidate() {}, dispose: dashboard.hide };
 		});
 	});

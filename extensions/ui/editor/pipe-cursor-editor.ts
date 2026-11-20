@@ -1,10 +1,13 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { autocompleteHint, autocompleteTitle, ruleText } from "../../shared/autocomplete-widget.ts";
 
 const BLUE_RAIL = "\x1b[38;2;90;175;255m│\x1b[39m ";
 
 export class PipeCursorEditor extends CustomEditor {
 	private confirmAbort: "inline" | "widget" | undefined;
+	private inputRules: [number, number] | undefined;
+	private menuRows: { start: number; count: number; box: number; boxStart: number; offset: number } | undefined;
 	private readonly run: Pick<ExtensionContext, "isIdle" | "abort"> & {
 		placeAbortPrompt?: (render?: (width: number) => string[]) => boolean;
 	};
@@ -44,8 +47,25 @@ export class PipeCursorEditor extends CustomEditor {
 		super.handleInput(data);
 	}
 
+	handleMouse(event: TuiMouseEvent) {
+		const menu = this.menuRows;
+		if (!menu) return super.handleMouse(event);
+		const y = event.y - menu.offset;
+		if (y >= menu.start && y < menu.start + menu.count) {
+			return super.handleMouse({ ...event, y: menu.box + y - menu.start });
+		}
+		if (y >= menu.boxStart) return super.handleMouse({ ...event, y: y - menu.boxStart });
+		return undefined;
+	}
+
+	isInputRule(row: number): boolean {
+		return this.inputRules?.includes(row) ?? false;
+	}
+
 	render(width: number): string[] {
 		let lines = super.render(width);
+		this.menuRows = undefined;
+		let boxBottom = lines.length - 1;
 
 		// Move the @/"/" autocomplete suggestion list (files, skills, commands)
 		// from below the input box to above it. The base Editor always appends
@@ -70,15 +90,27 @@ export class PipeCursorEditor extends CustomEditor {
 					break;
 				}
 			}
+			boxBottom = borderIndex;
 			if (borderIndex !== -1 && borderIndex < lines.length - 1) {
 				const box = lines.slice(0, borderIndex + 1);
 				const autocomplete = lines.slice(borderIndex + 1);
-				lines = [...autocomplete, ...box];
+				const slash = /^\s*\/[^\s/]*$/.test(this.getText());
+				const menu = [
+					this.borderColor(ruleText(width, autocompleteTitle("Main", slash))),
+					...autocomplete,
+					truncateToWidth(autocompleteHint("Main", slash), width),
+				];
+				this.menuRows = { start: 1, count: autocomplete.length, box: box.length, boxStart: menu.length, offset: 0 };
+				lines = [...menu, ...box];
 			}
 		}
 
 		if (this.confirmAbort && this.run.isIdle()) this.confirmAbort = undefined;
-		return this.confirmAbort === "inline" ? [...this.renderAbortPrompt(width), ...lines] : lines;
+		const prompt = this.confirmAbort === "inline" ? this.renderAbortPrompt(width) : [];
+		if (this.menuRows) this.menuRows.offset = prompt.length;
+		const boxStart = (this.menuRows?.boxStart ?? 0) + prompt.length;
+		this.inputRules = boxBottom >= 2 ? [boxStart, boxStart + boxBottom] : undefined;
+		return prompt.length ? [...prompt, ...lines] : lines;
 	}
 
 	private renderAbortPrompt(width: number): string[] {

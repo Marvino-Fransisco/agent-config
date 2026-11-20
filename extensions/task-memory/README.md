@@ -53,7 +53,7 @@ Budgeting uses Pi's token estimates with a 20% allowance, not a provider tokeniz
 
 The summary preserves the task goal, constraints, active step, next action, critical context, required reads, blockers and resume checks first. Decisions, verification evidence and other references are included only if they fit as whole items. Omitted details remain in the task/project files; the summary points to them for targeted reads. If essential content cannot fit, shorten the checkpoint or use a larger model. A raw tool-call/result group that exceeds the tail budget is omitted as a whole rather than split. Repeated compactions also consider messages retained by the previous compaction.
 
-The same policy applies to direct checkpoints, a fresh checkpoint used by `/compact`, and automatic task/project injection on resume or after Pi's default compaction. Effective per-model `reserveTokens` and `keepRecentTokens` overrides are respected and budgets are recalculated for model changes. Automatic compaction without new work or a relevant state/model/settings change is stopped to avoid retry loops. No budget indicator is added to the UI.
+Direct checkpoints, `/compact`, and automatic task/project injection use the same budget policy. On resume or after Pi's default compaction, the extension uses Pi's message-content estimates for the retained branch. If the required state does not fit, it skips automatic injection without changing files or sending an error message into the conversation. Use `/task` to inspect the saved state. If the branch is full, open a fresh session in the same checkout before running `/task resume`. Effective per-model `reserveTokens` and `keepRecentTokens` overrides are respected and budgets are recalculated for model changes. Automatic compaction without new work or a relevant state/model/settings change is stopped to avoid retry loops.
 
 If Pi's effective reserve is at least the model context window, or fixed prompts/tools already exceed the target, the extension reports the incompatible settings instead of repeatedly compacting. Configure an appropriate `compaction.modelOverrides["provider/modelId"]` in Pi settings; the extension does not rewrite those settings. Pi's default summarizer remains a fallback and its output is not hard-capped by the custom handoff summary limit. Token estimates and safety margins cannot guarantee that every provider's exact token count will fit.
 
@@ -76,10 +76,9 @@ Each module with its own types keeps them in a corresponding `*.types.ts` file b
 npm install
 npm test            # unit + hook tests (Pi packages stubbed), no model calls
 npm run typecheck   # tsconfig paths point at the installed Pi release
-ln -s "$PWD/extensions/task-memory" ~/.pi/agent/extensions/task-memory   # install
 ```
 
-Also link `extensions/shared/` beside the extension links, following [Installing symlinked extensions](../../README.md#installing-symlinked-extensions). Pi resolves sibling imports from the installed location, so the shared link is required.
+To load task-memory in Pi, follow the [installation guide](../../INSTALLATION.MD#2-link-the-core-extensions-and-skill).
 
 After a Pi upgrade, update the release path in `tsconfig.json`.
 

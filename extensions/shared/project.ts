@@ -4,6 +4,8 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
+export const lastPromptPath = join(".pi", "last-prompt.txt");
+
 export interface ProjectIdentity {
   root: string;
   name: string;

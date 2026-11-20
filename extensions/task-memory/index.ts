@@ -1,5 +1,5 @@
 // task-memory: durable task state, agent-written handoffs at compaction, phase widget.
-import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
+import { estimateTokens, type ExtensionAPI, type ExtensionContext, type SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -15,7 +15,7 @@ import { applyTaskAction } from "./actions/actions.ts";
 import type { Handoff } from "./actions/actions.types.ts";
 import type { Saved, PendingInjection, ActiveTool } from "./index.types.ts";
 import { compactionDraft, compactionWorkKey, lastKnownHash } from "./compaction/compaction.ts";
-import { handoffBudget, HandoffBudgetError, textTokens } from "./compaction/budget.ts";
+import { handoffBudget, HandoffBudgetError } from "./compaction/budget.ts";
 import { renderBudgetedHandoff } from "./compaction/handoff.ts";
 import { installWidget } from "./ui/ui.ts";
 import { createNotes } from "./ui/notes.ts";
@@ -125,9 +125,15 @@ export default function (pi: ExtensionAPI) {
     if (!ctxRef) throw new HandoffBudgetError("No active model context for saved state.");
     const budget = handoffBudget(pi, ctxRef, th.warn);
     const projection = ctxRef.sessionManager.buildSessionProjection();
-    const existing = (projection.messages ?? []).filter((message) => message.role !== "system").reduce((sum, message) => sum + textTokens(JSON.stringify(message)), 0);
-    const cap = Math.min(budget.summaryTokens, budget.availableTokens - existing);
-    return renderBudgetedHandoff({ task, project, root }, cap, [task ? taskPrefix : P.PROJECT_PREFIX, ...warnings]);
+    const existing = (projection.messages ?? []).reduce((sum, message) => sum + (message.role === "system" ? 0 : estimateTokens(message)), 0);
+    const cap = Math.min(budget.summaryTokens, budget.availableTokens - Math.ceil(existing * 1.2));
+    if (cap <= 0) return "";
+    try {
+      return renderBudgetedHandoff({ task, project, root }, cap, [task ? taskPrefix : P.PROJECT_PREFIX, ...warnings]);
+    } catch (error) {
+      if (!(error instanceof HandoffBudgetError)) throw error;
+      return "";
+    }
   }
 
   function touchedList(): string[] {
@@ -257,11 +263,10 @@ export default function (pi: ExtensionAPI) {
     if (cp && !cp.dirty) warnings.push("Checkpoint working-tree status unavailable; inspect it before continuing.");
     if (!current.dirty) warnings.push("Current working-tree status unavailable; inspect it before continuing.");
     else if (current.dirty.length || cp?.dirty?.length) warnings.push(`Working tree may have changed (checkpoint: ${cp?.dirty ? cp.dirty.join(", ") || "clean" : "unavailable"}; current: ${current.dirty.join(", ") || "clean"}). Dirty file contents can change without status changing.`);
-    if (warnings.length) {
-      warnings.push("Revalidate affected files, line ranges, facts and progress; preserve user changes.");
-      notify("task-memory: saved task may be stale; agent must revalidate before continuing", "warning");
-    }
-    return injectText(task, project, P.RESUME_PREFIX, warnings);
+    if (warnings.length) warnings.push("Revalidate affected files, line ranges, facts and progress; preserve user changes.");
+    const content = injectText(task, project, P.RESUME_PREFIX, warnings);
+    if (content && warnings.length) notify("task-memory: saved task may be stale; agent must revalidate before continuing", "warning");
+    return content;
   }
 
   async function refreshInject(ctx: ExtensionContext, tree = false): Promise<void> {
@@ -272,9 +277,12 @@ export default function (pi: ExtensionAPI) {
       const content = await resumeText(task, project, tree);
       pendingInject = content && (tree || content.includes("[task-memory] Resume checks:") || lastKnownHash(ctx) !== h) ? { content, hash: h } : undefined;
     } catch (err) {
-      const message = err instanceof HandoffBudgetError
-        ? `task-memory: saved state was not injected: ${err.message} Full state remains at ${dir}.`
-        : `task-memory: failed to load memory: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
+      if (err instanceof HandoffBudgetError) {
+        pendingInject = undefined;
+        notify(`task-memory: skipped automatic memory injection: ${err.message} Full state remains at ${dir}.`, "warning");
+        return;
+      }
+      const message = `task-memory: failed to load memory: ${(err as Error).message}. Do not assume memory is empty; ask the user to repair it.`;
       notify(message, "error");
       pendingInject = { content: message, hash: "memory-error" };
     }
@@ -683,10 +691,13 @@ export default function (pi: ExtensionAPI) {
 
       if (sub === "resume") {
         if (!task) { ctx.ui.notify("No active task.", "info"); return; }
-        pendingInject = undefined; taskEngaged = true;
+        pendingInject = undefined;
+        const content = await resumeText(task, project);
+        if (!content) { ctx.ui.notify("Saved task does not fit the current context budget. Use /task to view it.", "warning"); return; }
+        taskEngaged = true;
         const opt = ctx.isIdle() ? undefined : { deliverAs: "followUp" as const };
         pi.sendMessage({
-          customType: "task-memory-state", content: await resumeText(task, project),
+          customType: "task-memory-state", content,
           display: false, details: { hash: S.stateHash(task, project) },
         }, opt);
         pi.sendUserMessage("Continue the active task from its saved state.", opt);

@@ -4,14 +4,18 @@ A separate Pi extension stores explicit global and per-checkout memories in Post
 
 ## Setup
 
-Requires Docker Compose, Node.js, and a Gemini API key. From the repository root, install dependencies and make the extension available to Pi:
+Requires Docker Compose, Node.js, and a Gemini API key. Follow the [installation guide](../../INSTALLATION.MD#2-link-the-core-extensions-and-skill) first so the `shared` link is in place. From the repository root, install dependencies and link this extension into the same Pi directory:
 
 ```sh
-npm install
-ln -s "$PWD/extensions/long-memory" ~/.pi/agent/extensions/long-memory
+npm ci --omit=dev --ignore-scripts
+agent_dir=${PI_CODING_AGENT_DIR:-"$HOME/.pi/agent"}
+target="$agent_dir/extensions/long-memory"
+if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+  ln -s "$PWD/extensions/long-memory" "$target"
+fi
 ```
 
-Also link `extensions/shared/` beside the extension links, following [Installing symlinked extensions](../../README.md#installing-symlinked-extensions). Pi resolves sibling imports from the installed location, so the shared link is required.
+If the destination already exists, verify that it points to this checkout before continuing.
 
 Create the local configuration file once without overwriting an existing one, restrict its permissions, and edit it privately:
 

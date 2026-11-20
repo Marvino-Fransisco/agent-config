@@ -10,10 +10,11 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@earendil-works/pi-coding-agent": ["/Users/marvinofransisco/.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"],
-      "@earendil-works/pi-ai": ["/Users/marvinofransisco/.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-ai/dist/index.d.ts"],
-      "@earendil-works/pi-tui": ["/Users/marvinofransisco/.pi/agent/install/releases/1.5.0/node_modules/@earendil-works/pi-tui/dist/index.d.ts"],
-      "typebox": ["/Users/marvinofransisco/.pi/agent/install/releases/1.5.0/node_modules/typebox"]
+      "@earendil-works/pi-agent-core": ["/Users/marvinofransisco/.pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-agent-core/dist/index.d.ts"],
+      "@earendil-works/pi-coding-agent": ["/Users/marvinofransisco/.pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"],
+      "@earendil-works/pi-ai": ["/Users/marvinofransisco/.pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-ai/dist/index.d.ts"],
+      "@earendil-works/pi-tui": ["/Users/marvinofransisco/.pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-tui/dist/index.d.ts"],
+      "typebox": ["/Users/marvinofransisco/.pi/agent/install/releases/1.6.0/node_modules/typebox"]
     }
   },
   "include": ["extensions/**/*.ts"]

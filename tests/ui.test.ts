@@ -40,7 +40,17 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   handlers.get("session_start")!({}, ctx);
   editor.lines = ["───", "input", "───", "suggestion"];
   editor.autocomplete = true;
-  assert.deepEqual(editor.render(80), ["suggestion", "───", "input", "───"]);
+  editor.text = "read @";
+  assert.match(editor.render(80).join("\n"), /^ Cari file Main .*\nsuggestion\n↑↓ Pilih · Enter Sisipkan.*\n───/);
+  editor.handleMouse({ y: 1 });
+  assert.equal(editor.lastMouse.y, 3);
+  editor.text = "/";
+  assert.match(editor.render(80).join("\n"), /^ Perintah Main .*\nsuggestion\n↑↓ Pilih.*\n───/);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].filter((row) => editor.isInputRule(row)), [3, 5]);
+  editor.handleMouse({ y: 1 });
+  assert.equal(editor.lastMouse.y, 3);
+  editor.handleMouse({ y: 4 });
+  assert.equal(editor.lastMouse.y, 1);
   assert.deepEqual(footer.render(100), []);
   const row = widget.render(100)[0].replace(/\x1b\[[\d;]*m/g, "");
   assert.match(row, /^\/project \(main\) +test-model • medium$/);
@@ -116,14 +126,15 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
     model: { id: "test-model", reasoning: true },
     thinkingLevel: "high",
   };
-  const listeners: Array<(data: any) => void> = [];
+  const listeners = new Map<string, (data: any) => void>();
   registerDashboard({
     on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); },
     getCommands: () => [{ name: "task" }, { name: "context" }],
     sendUserMessage: (text: string) => { sent.push(text); },
-    events: { on: (_name: string, handler: (data: any) => void) => { listeners.push(handler); }, emit: (_name: string, data: unknown) => { for (const l of listeners) l(data); } },
+    events: { on: (name: string, handler: (data: any) => void) => listeners.set(name, handler),
+      emit: (name: string, data: unknown) => listeners.get(name)?.(data) },
   } as never, () => undefined);
-  listeners.push((data) => data.push({ title: "Active task", lines: ["Build dashboard · step 1/3"] }));
+  listeners.set("ui:dashboard:sections", (data) => data.push({ title: "Active task", lines: ["Build dashboard · step 1/3"] }));
 
   handlers.get("session_start")!({ reason: "startup" }, ctx);
   assert.deepEqual(header.render(100), []);
@@ -152,6 +163,11 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
   overlay.render(100);
   assert.ok(options.row < start);
   t.mock.timers.tick(300);
+  assert.equal(overlay, undefined);
+
+  handlers.get("session_start")!({ reason: "new" }, ctx);
+  assert.ok(overlay);
+  listeners.get("ui:tutor:split")?.(undefined);
   assert.equal(overlay, undefined);
 
   branch = [{ type: "message" }];
