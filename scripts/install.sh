@@ -1,8 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo=$(pwd -P)
-agent_dir=${PI_CODING_AGENT_DIR:-"$HOME/.pi/agent"}
+. "$(dirname "$0")/links.sh"
 test -f "$repo/extensions/ui/index.ts"
 test -f "$repo/extensions/brainstorming/index.ts"
 test -f "$repo/skills/brainstorm/SKILL.md"
@@ -22,9 +21,9 @@ link() {
   ln -s "$1" "$2"
 }
 
-for name in shared ui task-memory prompt tutor undo-send brainstorming; do
+for name in $extension_names; do
   link "$repo/extensions/$name" "$agent_dir/extensions/$name"
 done
-for name in brainstorm domain-modeling teach; do
+for name in $skill_names; do
   link "$repo/skills/$name" "$agent_dir/skills/$name"
 done

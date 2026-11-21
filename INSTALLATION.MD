@@ -31,10 +31,10 @@ cd pi-config
 
 Keep the checkout at a stable location: Pi loads directly from these links. The core extensions do not need a database or a separate `npm install`.
 
-Run [install.sh](install.sh) from the repository root. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the script is safe after resolving it.
+Run [scripts/install.sh](scripts/install.sh) from the repository root. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the script is safe after resolving it.
 
 ```sh
-./install.sh
+./scripts/install.sh
 ```
 
 `shared` is not a standalone extension; keep it alongside the extension links so relative imports resolve. The skill links make `/skill:brainstorm`, `/skill:domain-modeling`, and `/skill:teach` available in Main. Run `/skill:teach <topic>` from the directory where you want to keep your lessons and learning records.
@@ -63,4 +63,4 @@ If Pi reports a missing `../shared/...` module, verify that all links point to t
 
 ## Uninstall
 
-Remove only the symlinks you installed after checking their targets, then run `/reload`. Do not remove `shared` if another installed extension still uses it. The repository, project history, and any optional PostgreSQL data are separate and are not removed by unlinking.
+Follow [UNINSTALL.md](UNINSTALL.md) to remove the Pi configuration links without deleting your checkout or data.
