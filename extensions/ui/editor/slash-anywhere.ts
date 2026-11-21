@@ -26,7 +26,6 @@ export function createSlashAnywhere(pi: ExtensionAPI, ctx: ExtensionContext) {
 
   async function run(name: string, editor: Editor) {
     if (running) return;
-    if (!ctx.isIdle()) { ui.notify("Wait for the current run before running a slash command.", "warning"); return; }
     if (name === "quit" && readDraft().trim()) { ui.notify("Send or clear your draft before quitting Pi.", "warning"); return; }
     running = true;
     try {

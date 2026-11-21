@@ -109,10 +109,9 @@ test("only Enter confirms abort; dismissing or typing keeps the run and draft in
   assert.deepEqual(editor.render(80), []);
 });
 
-test("fresh session dashboard is centered, runs actions and slides away on the first message", (t) => {
+test("fresh session dashboard shows a blue cat and session details, then slides away on the first message", (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
-  const sent: string[] = [];
   let header: any;
   let overlay: any;
   let options: any;
@@ -124,41 +123,35 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
   };
   const ctx = {
     mode: "tui",
-    ui: { setHeader: (factory: any) => { header?.dispose?.(); header = factory?.(tui, {}); }, notify: () => {} },
+    ui: { setHeader: (factory: any) => { header?.dispose?.(); header = factory?.(tui, {}); } },
     sessionManager: { getCwd: () => "/project", getBranch: () => branch },
     model: { id: "test-model", reasoning: true },
     thinkingLevel: "high",
   };
-  const listeners = new Map<string, (data: any) => void>();
+  const listeners = new Map<string, () => void>();
   registerDashboard({
     on: (name: string, handler: (event: unknown, ctx: unknown) => void) => { handlers.set(name, handler); },
-    getCommands: () => [{ name: "task" }, { name: "context" }],
-    sendUserMessage: (text: string) => { sent.push(text); },
-    events: { on: (name: string, handler: (data: any) => void) => listeners.set(name, handler),
-      emit: (name: string, data: unknown) => listeners.get(name)?.(data) },
-  } as never, () => undefined);
-  listeners.set("ui:dashboard:sections", (data) => data.push({ title: "Active task", lines: ["Build dashboard · step 1/3"] }));
+    events: { on: (name: string, handler: () => void) => listeners.set(name, handler) },
+  } as never, () => ({ getGitBranch: () => "main" }) as never);
 
   handlers.get("session_start")!({ reason: "startup" }, ctx);
   assert.deepEqual(header.render(100), []);
   const lines: string[] = overlay.render(100);
   assert.equal(options.nonCapturing, true);
   assert.equal(options.row, Math.floor((40 - 6 - lines.length) / 2));
-  const colored = lines.join("\n");
-  const text = stripVTControlCharacters(colored);
-  assert.match(text, /██████╗/);
-  assert.match(text, /test-model • high/);
-  assert.match(text, /Build dashboard · step 1\/3/);
-  assert.match(text, /click to run/);
-  assert.match(text, /› Context usage/);
-  assert.doesNotMatch(text, /alt\+/);
-  assert.doesNotMatch(text, /Long-term memory/);
-
-  assert.doesNotMatch(colored.replace(new RegExp(`${"\x1b"}\\[38;2;(\\d+);(\\d+);(\\d+)m`, "g"), (_m, r, g, b) => (Number(b) >= Number(r) && Number(b) >= Number(g) ? "" : "NOT_BLUE")), /NOT_BLUE/);
-  overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Task notes")) });
-  overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Resume active task")) });
-  overlay.handleMouse({ type: "click", y: 0 });
-  assert.deepEqual(sent, ["/task", "/task resume"]);
+  assert.ok(lines[0]!.includes("\x1b[38;2;90;175;255m▟▙"));
+  assert.deepEqual(lines.map((line) => stripVTControlCharacters(line).trimStart()), [
+    "▟▙        ▟▙",
+    "████████████   pi coding agent vtest",
+    "██  ████  ██   test-model • high",
+    "▀████████▀    /project (main)",
+  ]);
+  assert.deepEqual(overlay.render(24).slice(-3).map((line: string) => stripVTControlCharacters(line).trim()), [
+    "pi coding agent vtest",
+    "test-model • high",
+    "/project (main)",
+  ]);
+  overlay.render(100);
 
   const start = options.row;
   handlers.get("input")!({ text: "hi" }, ctx);
@@ -170,7 +163,7 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
 
   handlers.get("session_start")!({ reason: "new" }, ctx);
   assert.ok(overlay);
-  listeners.get("ui:tutor:split")?.(undefined);
+  listeners.get("ui:tutor:split")?.();
   assert.equal(overlay, undefined);
 
   branch = [{ type: "message" }];

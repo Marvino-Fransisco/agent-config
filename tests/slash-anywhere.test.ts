@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSlashAnywhere, slashToken } from "../extensions/ui/editor/slash-anywhere.ts";
 
-function harness() {
+function harness(isIdle = true) {
   let draft = "";
   let pickName = "skill:teach";
   const calls: string[] = [];
-  const catalog = ["skill:teach", "reload", "task", "review"];
+  const catalog = ["skill:teach", "reload", "task", "review", "copy"];
   const native = {
     async getSuggestions(lines: string[], line: number, col: number) {
       const prefix = lines[line].slice(0, col);
@@ -23,7 +23,7 @@ function harness() {
       calls.push(command);
     },
   } as never, {
-    isIdle: () => true,
+    isIdle: () => isIdle,
     ui: {
       getEditorText: () => draft,
       setEditorText: (value: string) => { draft = value; },
@@ -80,6 +80,15 @@ test("runs selected commands separately and restores the draft after a native co
   await h.complete("/rel", 0, 4, "reload");
   assert.deepEqual(h.calls, ["/reload", "/task", "/reload"]);
   assert.equal(h.draft(), "");
+});
+
+test("dispatches extension and built-in commands while busy without submitting the draft", async () => {
+  const h = harness(false);
+  await h.complete("keep /task this draft", 0, 10, "task");
+  assert.equal(h.draft(), "keep this draft");
+  await h.pick("copy");
+  assert.equal(h.draft(), "keep this draft");
+  assert.deepEqual(h.calls, ["/task", "/copy"]);
 });
 
 test("the fallback picker runs commands and stages skills without submitting the draft", async () => {
