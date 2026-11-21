@@ -143,7 +143,7 @@ test("fresh session dashboard shows a blue cat and session details, then slides 
   assert.deepEqual(lines.map((line) => stripVTControlCharacters(line).trimStart()), [
     "▟▙        ▟▙",
     "████████████   pi coding agent vtest",
-    "██  ████  ██   test-model • high",
+    "█▄   ▄▄   ▄█   test-model • high",
     "▀████████▀    /project (main)",
   ]);
   assert.deepEqual(overlay.render(24).slice(-3).map((line: string) => stripVTControlCharacters(line).trim()), [

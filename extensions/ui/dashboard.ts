@@ -6,7 +6,7 @@ import { truncateToWidth, visibleWidth, type OverlayHandle, type OverlayOptions,
 const CAT = [
 	"▟▙        ▟▙",
 	"████████████",
-	"██  ████  ██",
+	"█▄   ▄▄   ▄█",
 	" ▀████████▀ ",
 ];
 const BOTTOM_ROWS = 6;
