@@ -41,11 +41,11 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   editor.lines = ["───", "input", "───", "suggestion"];
   editor.autocomplete = true;
   editor.text = "read @";
-  assert.match(editor.render(80).join("\n"), /^ Cari file Main .*\nsuggestion\n↑↓ Pilih · Enter Sisipkan.*\n───/);
+  assert.match(editor.render(80).join("\n"), /^ Find files .*\nsuggestion\n↑↓ Select · Enter Insert · Tab Complete · Esc Close\n───/);
   editor.handleMouse({ y: 1 });
   assert.equal(editor.lastMouse.y, 3);
   editor.text = "/";
-  assert.match(editor.render(80).join("\n"), /^ Perintah Main .*\nsuggestion\n↑↓ Pilih.*\n───/);
+  assert.match(editor.render(80).join("\n"), /^ Main commands .*\nsuggestion\n↑↓ Select · Enter Run · Tab Complete · Esc Close\n───/);
   assert.deepEqual([0, 1, 2, 3, 4, 5].filter((row) => editor.isInputRule(row)), [3, 5]);
   editor.handleMouse({ y: 1 });
   assert.equal(editor.lastMouse.y, 3);

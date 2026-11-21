@@ -34,9 +34,9 @@ function readPrompt(path: string): string {
   try {
     requireDirectory(dirname(path));
     if (!lstatSync(path).isFile()) throw new Error("Last prompt is not a regular file");
-    return displayText(readFileSync(path, "utf8")) || "[Prompt hanya berisi lampiran]";
+    return displayText(readFileSync(path, "utf8")) || "[Prompt contains only attachments]";
   } catch (error) {
-    if (isMissing(error)) return "Belum ada prompt yang tersimpan di project ini.";
+    if (isMissing(error)) return "No prompt has been saved in this project yet.";
     throw error;
   }
 }
@@ -77,7 +77,7 @@ export default function promptExtension(pi: ExtensionAPI) {
     description: "Show the last sent prompt in this project",
     handler: async (_args, ctx) => {
       if (panel?.canShow()) panel.open();
-      else ctx.ui.notify("/prompt membutuhkan TUI minimal 80 kolom × 12 baris", "warning");
+      else ctx.ui.notify("/prompt requires a terminal of at least 80 columns × 12 rows.", "warning");
     },
   });
 }

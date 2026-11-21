@@ -38,7 +38,7 @@ async function install(cwd: string) {
     send: async (message: unknown) => handlers.get("message_start")?.({ message }, ctx),
     open: async () => command!("", ctx),
     shutdown: () => handlers.get("session_shutdown")?.({}, ctx),
-    get overlay() { return overlay; }, get options() { return options; }, notifications,
+    get overlay() { return overlay; }, get options() { return options; }, notifications, terminal: tui.terminal,
   };
 }
 
@@ -53,14 +53,18 @@ test("only sent user messages replace the project prompt, and /prompt opens and 
   t.after(ui.shutdown);
   await ui.open();
   assert.equal(ui.options.anchor, "top-right");
-  assert.match(ui.overlay.render(60).join("\n"), /Belum ada prompt/);
+  assert.match(ui.overlay.render(60).join("\n"), /No prompt has been saved in this project yet\./);
   ui.overlay.handleInput("escape");
-  assert.equal(ui.overlay, undefined);
+  assert.equal(Boolean(ui.overlay), false);
   await assert.rejects(stat(path), { code: "ENOENT" });
   await ui.send({ role: "user", content: "First prompt" });
   assert.equal(await readFile(path, "utf8"), "First prompt");
   await ui.send({ role: "assistant", content: "Ignored" });
   assert.equal(await readFile(path, "utf8"), "First prompt");
+  await ui.send({ role: "user", content: [{ type: "image", data: "binary omitted" }] });
+  await ui.open();
+  assert.match(ui.overlay.render(60).join("\n"), /\[Prompt contains only attachments\]/);
+  ui.overlay.handleInput("escape");
   await ui.send({ role: "user", content: [{ type: "image", data: "binary omitted" }, { type: "text", text: "Second\nline" }] });
   assert.equal(await readFile(path, "utf8"), "Second\nline");
   assert.equal((await stat(path)).mode & 0o777, 0o600);
@@ -71,4 +75,8 @@ test("only sent user messages replace the project prompt, and /prompt opens and 
   await anotherSession.open();
   assert.match(anotherSession.overlay.render(60).join("\n"), /Second[^\n]*\n[^\n]*line/);
   assert.deepEqual(ui.notifications, []);
+  ui.terminal.columns = 79;
+  await ui.open();
+  assert.equal(ui.overlay, undefined);
+  assert.deepEqual(ui.notifications, ["/prompt requires a terminal of at least 80 columns × 12 rows."]);
 });
