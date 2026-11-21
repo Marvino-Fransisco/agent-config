@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PipeCursorEditor } from "./editor/pipe-cursor-editor.ts";
+import { createSlashAnywhere } from "./editor/slash-anywhere.ts";
 import { installContextFooter } from "./footer/context-footer.ts";
 import { installTopbar } from "./widget/topbar.ts";
 import { registerContextCommand } from "./context.ts";
@@ -12,10 +13,15 @@ export default function (pi: ExtensionAPI) {
 	let getFooterData: ReturnType<typeof installContextFooter> | undefined;
 	let editor: PipeCursorEditor | undefined;
 	registerDashboard(pi, () => getFooterData?.());
+	pi.registerShortcut("alt+/", {
+		description: "Pick a skill or command with Slash Anywhere",
+		handler: async () => { await editor?.pickSlash(); },
+	});
 	pi.on("session_start", (_event, ctx) => {
 		ctx.ui.setEditorComponent((tui, theme, kb) => (editor = new PipeCursorEditor({
 			isIdle: ctx.isIdle,
 			abort: ctx.abort,
+			slashAnywhere: ctx.mode === "tui" ? createSlashAnywhere(pi, ctx) : undefined,
 			placeAbortPrompt: (render) => {
 				const prompt = { render, handled: false };
 				pi.events?.emit("ui:abort-prompt", prompt);

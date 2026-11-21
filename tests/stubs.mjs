@@ -20,6 +20,8 @@ export class CustomEditor {
   handleInput(data) { this.lastInput = data; }
   render() { return this.lines ?? []; }
   getText() { return this.text ?? ""; }
+  getLines() { return this.getText().split("\n"); }
+  getCursor() { const lines = this.getLines(); return { line: lines.length - 1, col: lines.at(-1).length }; }
   borderColor(text) { return text; }
   handleMouse(event) { this.lastMouse = event; }
   isShowingAutocomplete() { return this.autocomplete ?? false; }

@@ -1,6 +1,8 @@
+import { stripVTControlCharacters } from "node:util";
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, wrapTextWithAnsi, type AutocompleteProvider, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { autocompleteHint, autocompleteTitle, ruleText } from "../../shared/autocomplete-widget.ts";
+import { slashToken, type createSlashAnywhere } from "./slash-anywhere.ts";
 
 const BLUE_RAIL = "\x1b[38;2;90;175;255m│\x1b[39m ";
 
@@ -10,6 +12,7 @@ export class PipeCursorEditor extends CustomEditor {
 	private menuRows: { start: number; count: number; box: number; boxStart: number; offset: number } | undefined;
 	private readonly run: Pick<ExtensionContext, "isIdle" | "abort"> & {
 		placeAbortPrompt?: (render?: (width: number) => string[]) => boolean;
+		slashAnywhere?: ReturnType<typeof createSlashAnywhere>;
 	};
 	private readonly bindings: ConstructorParameters<typeof CustomEditor>[2];
 
@@ -17,6 +20,20 @@ export class PipeCursorEditor extends CustomEditor {
 		super(...args);
 		this.run = run;
 		this.bindings = args[2];
+	}
+
+	setAutocompleteProvider(provider: AutocompleteProvider): void {
+		super.setAutocompleteProvider(this.run.slashAnywhere?.wrap(provider, this) ?? provider);
+	}
+
+	pickSlash(): Promise<void> | undefined {
+		return this.run.slashAnywhere?.pick(this);
+	}
+
+	private currentSlashToken() {
+		if (!this.run.slashAnywhere) return;
+		const { line, col } = this.getCursor();
+		return slashToken(this.getLines(), line, col);
 	}
 
 	clearAbortConfirmation(): void {
@@ -44,7 +61,12 @@ export class PipeCursorEditor extends CustomEditor {
 			this.tui.requestRender();
 			return;
 		}
+		const wasCompleting = this.isShowingAutocomplete();
 		super.handleInput(data);
+		if (!wasCompleting && /^[\w/:-]$/.test(data) && this.currentSlashToken()?.inline) {
+			const trigger = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(CustomEditor.prototype), "tryTriggerAutocomplete")?.value;
+			if (typeof trigger === "function") trigger.call(this);
+		}
 	}
 
 	handleMouse(event: TuiMouseEvent) {
@@ -80,11 +102,10 @@ export class PipeCursorEditor extends CustomEditor {
 		// "─── ↓ 3 more ───" (arrow + digits + literal "more", still dash-framed).
 		// Real content essentially never consists solely of '─'.
 		if (this.isShowingAutocomplete()) {
-			const STRIP_RE = /\x1b\[[0-9;]*m|\x1b_pi:c\x07/g;
 			const BORDER_RE = /^(?=.*─)\s*─*\s*(?:[↑↓]\s*\d+\s*more\s*─*\s*)?$/i;
 			let borderIndex = -1;
 			for (let i = lines.length - 1; i >= 0; i--) {
-				const stripped = lines[i]!.replace(STRIP_RE, "");
+				const stripped = stripVTControlCharacters((lines[i] ?? "").replaceAll("\x1b_pi:c\x07", ""));
 				if (BORDER_RE.test(stripped)) {
 					borderIndex = i;
 					break;
@@ -94,11 +115,11 @@ export class PipeCursorEditor extends CustomEditor {
 			if (borderIndex !== -1 && borderIndex < lines.length - 1) {
 				const box = lines.slice(0, borderIndex + 1);
 				const autocomplete = lines.slice(borderIndex + 1);
-				const slash = /^\s*\/[^\s/]*$/.test(this.getText());
+				const slash = this.run.slashAnywhere ? Boolean(this.currentSlashToken()) : /^\s*\/[^\s/]*$/.test(this.getText());
 				const menu = [
 					this.borderColor(ruleText(width, autocompleteTitle("Main", slash))),
 					...autocomplete,
-					truncateToWidth(autocompleteHint("Main", slash), width),
+					truncateToWidth(this.run.slashAnywhere && slash ? "↑↓ Select · Enter/Tab: run command or stage skill · Esc Close" : autocompleteHint("Main", slash), width),
 				];
 				this.menuRows = { start: 1, count: autocomplete.length, box: box.length, boxStart: menu.length, offset: 0 };
 				lines = [...menu, ...box];

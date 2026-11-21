@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import assert from "node:assert/strict";
 import extension from "../extensions/ui/index.ts";
 import { PipeCursorEditor } from "../extensions/ui/editor/pipe-cursor-editor.ts";
@@ -45,14 +46,16 @@ test("installs the editor, footer and topbar with shared branch data", () => {
   editor.handleMouse({ y: 1 });
   assert.equal(editor.lastMouse.y, 3);
   editor.text = "/";
-  assert.match(editor.render(80).join("\n"), /^ Main commands .*\nsuggestion\n↑↓ Select · Enter Run · Tab Complete · Esc Close\n───/);
+  assert.match(editor.render(80).join("\n"), /^ Main commands .*\nsuggestion\n↑↓ Select · Enter\/Tab: run command or stage skill · Esc Close\n───/);
+  editor.text = "explain /te";
+  assert.match(editor.render(80).join("\n"), /^ Main commands /);
   assert.deepEqual([0, 1, 2, 3, 4, 5].filter((row) => editor.isInputRule(row)), [3, 5]);
   editor.handleMouse({ y: 1 });
   assert.equal(editor.lastMouse.y, 3);
   editor.handleMouse({ y: 4 });
   assert.equal(editor.lastMouse.y, 1);
   assert.deepEqual(footer.render(100), []);
-  const row = widget.render(100)[0].replace(/\x1b\[[\d;]*m/g, "");
+  const row = stripVTControlCharacters(widget.render(100)[0]);
   assert.match(row, /^\/project \(main\) +test-model • medium$/);
   assert.equal(row.length, 100);
   assert.equal(widgetPlacement, "belowEditor");
@@ -142,7 +145,7 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
   assert.equal(options.nonCapturing, true);
   assert.equal(options.row, Math.floor((40 - 6 - lines.length) / 2));
   const colored = lines.join("\n");
-  const text = colored.replace(/\x1b\[[0-9;]*m/g, "");
+  const text = stripVTControlCharacters(colored);
   assert.match(text, /██████╗/);
   assert.match(text, /test-model • high/);
   assert.match(text, /Build dashboard · step 1\/3/);
@@ -151,7 +154,7 @@ test("fresh session dashboard is centered, runs actions and slides away on the f
   assert.doesNotMatch(text, /alt\+/);
   assert.doesNotMatch(text, /Long-term memory/);
 
-  assert.doesNotMatch(colored.replace(/\x1b\[38;2;(\d+);(\d+);(\d+)m/g, (_m, r, g, b) => (Number(b) >= Number(r) && Number(b) >= Number(g) ? "" : "NOT_BLUE")), /NOT_BLUE/);
+  assert.doesNotMatch(colored.replace(new RegExp(`${"\x1b"}\\[38;2;(\\d+);(\\d+);(\\d+)m`, "g"), (_m, r, g, b) => (Number(b) >= Number(r) && Number(b) >= Number(g) ? "" : "NOT_BLUE")), /NOT_BLUE/);
   overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Task notes")) });
   overlay.handleMouse({ type: "click", y: lines.findIndex((l) => l.includes("Resume active task")) });
   overlay.handleMouse({ type: "click", y: 0 });
@@ -193,13 +196,13 @@ test("context report ranks only projected tool results and labels estimates", ()
   assert.match(report, /100 \/ 1,000 tokens \(10.0%\)/);
   assert.match(report, /Summaries:/);
   assert.doesNotMatch(report, /Context usage|Legend: at least one symbol|Grid is approximate/);
-  assert.match(report, /\x1b\[38;2;/);
+  assert.ok(report.includes("\x1b[38;2;"));
   assert.match(report, /Unattributed/);
   assert.match(report, /Free space/);
   assert.match(report, /Configured Pi reserve: 100/);
   assert.ok(report.indexOf(" bash:") < report.indexOf(" read:"));
-  assert.match(report, /\x1b\[38;2;105;180;255m◆\x1b\[39m bash:/);
-  assert.match(report, /\x1b\[38;2;95;225;220m◆\x1b\[39m read:/);
+  assert.ok(report.includes("\x1b[38;2;105;180;255m◆\x1b[39m bash:"));
+  assert.ok(report.includes("\x1b[38;2;95;225;220m◆\x1b[39m read:"));
 });
 
 test("context grid gives small non-zero categories visible dots", () => {
@@ -211,8 +214,8 @@ test("context grid gives small non-zero categories visible dots", () => {
   };
   const lines = contextReport(ctx as never);
   const grid = lines.slice(0, 10).map((line) => line.split("  ")[0]).join("");
-  assert.match(grid, /\x1b\[38;2;105;180;255m⛀/);
-  assert.match(grid, /\x1b\[38;2;95;225;220m⛁/);
+  assert.ok(grid.includes("\x1b[38;2;105;180;255m⛀"));
+  assert.ok(grid.includes("\x1b[38;2;95;225;220m⛁"));
   assert.equal((grid.match(/[⛀⛁]/g) ?? []).length, 2);
   assert.equal((grid.match(/⛶/g) ?? []).length, 198);
   assert.doesNotMatch(lines.join("\n"), /at least one symbol per non-zero category/);
@@ -274,7 +277,7 @@ test("shared panels show blue icon headings and update the scroll position", () 
       const lines: string[] = panel.render(80);
       assert.match(lines[0]!, new RegExp(`\\x1b\\[38;2;90;175;255m\\x1b\\[1m ${icon} \\[${title}\\]`));
       assert.ok(lines.length <= tui.terminal.rows);
-      const separators = lines.map((row) => row.replace(/\x1b\[[0-9;]*m/g, "")).filter((row) => row.startsWith("┣"));
+      const separators = lines.map(stripVTControlCharacters).filter((row) => row.startsWith("┣"));
       assert.deepEqual(separators, Array(2).fill(`┣${"━".repeat(78)}┫`));
       assert.match(lines.join("\n"), /↕ 1–4 \/ 30/);
       panel.handleInput("down");

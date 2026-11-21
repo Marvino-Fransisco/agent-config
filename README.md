@@ -7,6 +7,7 @@ A collection of extensions and skills for the [Pi coding agent](https://pi.dev/)
 | Feature | What it does |
 | --- | --- |
 | Main UI | Adds a startup dashboard, a path/model footer, and `/context` for a breakdown of context usage. |
+| [Slash Anywhere](#slash-anywhere) | Run commands or stage skills without submitting the Main draft. Press `Alt+/` to open the picker. |
 | Tutor | `/tutor` opens a separate English-language chat for code explanations and read-only workspace investigation. It can put an approved summary into the Main draft without sending it. |
 | Teach | `/skill:teach <topic>` in Main builds a learning workspace in the current directory: mission, sources, HTML lessons, references, and learning records. In Tutor, `/teach <topic>` uses the guidance in chat without writing workspace files. |
 | Last prompt | `/prompt` shows the last message sent from Main, not an unsent draft or a Tutor prompt. |
@@ -17,6 +18,14 @@ A collection of extensions and skills for the [Pi coding agent](https://pi.dev/)
 | Undo send | Gives you a brief window to press `Esc` and return a submitted message to the editor before the agent starts. |
 
 Task memory, Tutor history, and last prompts are stored locally per Git checkout, or per session directory outside Git. Keep Tutor history and last-prompt files out of version control. Tutor uses the active model provider; optional long-term memory uses PostgreSQL and Google embeddings.
+
+## Slash Anywhere
+
+Type `/` after a space or at the start of a line in Main. Use Tab or Enter to select a result. An inline skill or prompt template moves to the start of the draft (for example, `Explain snapshots /teach` becomes `/skill:teach Explain snapshots`). Review and submit it yourself.
+
+Selecting a command such as `/reload` runs it immediately, separately from the draft. Typing without selecting does not run it. Use the regular command line for a command that needs arguments. Extensions that explicitly replace the editor can still change it. `Alt+/` opens the picker without typing a slash.
+
+Slash Anywhere ships with Main UI and was tested on Pi 1.6.0. If another inline-slash extension is installed, use only one to avoid competing editor behavior.
 
 ## Brainstorming and project glossary
 
