@@ -375,7 +375,10 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   assert.equal(mainDraft, "Existing Main draft\n\nTutor discussion summary (approved by the user):\n\nEdited summary");
   shortcut!(ctx);
   await until(() => focused);
-  for (const letter of "/teach spaced repetition") panel.handleInput(letter);
+  for (const letter of "/te") panel.handleInput(letter);
+  await until(() => panel.render(60).some((line: string) => line.includes("Use the Teach skill in chat")));
+  panel.handleInput("\t");
+  for (const letter of "spaced repetition") panel.handleInput(letter);
   panel.handleInput("\r");
   await until(() => requests.length === 5 && panel.render(60).join("\n").includes("Ready to teach"));
   const teachPrompt = requests[4].messages[0];

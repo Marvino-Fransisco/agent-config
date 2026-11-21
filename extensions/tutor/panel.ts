@@ -58,6 +58,7 @@ export function createTutorPanel(tui: TUI, theme: Theme, callbacks: {
   input.setAutocompleteProvider(tutorAutocomplete(callbacks.root, [
     ...tutorActions.map(([, name, label]) => ({ name, description: label.split(" · ")[1] })),
     { name: "actions", description: "Open action menu" },
+    { name: "teach", description: "Use the Teach skill in chat" },
   ], (error) => { searchError = `File search failed: ${error instanceof Error ? error.message : String(error)}`; }));
   let scroll = 0;
   let page = 1;
@@ -221,7 +222,7 @@ export function createTutorPanel(tui: TUI, theme: Theme, callbacks: {
   input.onSubmit = (question) => {
     const action = tutorActions.find(([, name]) => question === `/${name}`);
     if (question === "/actions" || action) callbacks.action(action?.[1] ?? "menu");
-    else if (question && !/^\/[a-z-]*$/i.test(question)) {
+    else if (question && (question.toLowerCase() === "/teach" || !/^\/[a-z-]*$/i.test(question))) {
       if (!callbacks.ask(question)) { input.setText(question); return; }
       scroll = 0;
       scrollView?.scrollToEnd();
