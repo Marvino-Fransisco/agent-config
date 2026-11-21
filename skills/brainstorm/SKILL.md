@@ -57,4 +57,6 @@ After all material decisions are resolved or explicitly deferred, load [domain-m
 
 Check that no material branch remains open, even if the frontier is empty. Present a short brief with goal and scope, agreed requirements and rules, key edge cases and impacts, deferrals and consequences, and acceptance examples. Call `brainstorming` with `action: confirm` and the brief. If approval is declined, revise the brief and coverage before retrying.
 
-Approval completes brainstorming, not implementation. Implement only upon explicit request. Reconfirm the brief when material requirements change.
+Approval completes brainstorming, not implementation. Reconfirm the brief when material requirements change.
+
+If the user requested the full flow, including after brief approval, load the [spec skill](../spec/SKILL.md) and pass it the approved brief and build intent. Do not restart brainstorming for an already approved brief unless material requirements changed. Otherwise, offer to draft the spec and wait for the user's request. A spec handoff alone is draft-only; code changes in the full flow require explicit approval of the written spec and task breakdown.

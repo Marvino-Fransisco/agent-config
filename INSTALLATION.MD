@@ -37,7 +37,7 @@ Run [scripts/install.sh](scripts/install.sh) from the repository root. It leaves
 ./scripts/install.sh
 ```
 
-`shared` is not a standalone extension; keep it alongside the extension links so relative imports resolve. The skill links make `/skill:brainstorm`, `/skill:domain-modeling`, and `/skill:teach` available in Main. Run `/skill:teach <topic>` from the directory where you want to keep your lessons and learning records.
+`shared` is not a standalone extension; keep it alongside the extension links so relative imports resolve. The skill links make `/skill:brainstorm`, `/skill:domain-modeling`, `/skill:spec`, and `/skill:teach` available in Main. Run `/skill:teach <topic>` from the directory where you want to keep your lessons and learning records.
 
 ## 3. Reload and verify
 
@@ -48,7 +48,7 @@ Start `pi` from the workspace you want to use, or run `/reload` in an existing P
 | `/context` and `/task` | The context report and task panel open in turn. |
 | `/tutor` | Tutor opens. In fullscreen at 76 columns or wider (and at least 12 rows), it appears beside Main. Otherwise it uses an overlay if there is enough space. |
 | `/prompt` | The last sent Main prompt opens, or Pi reports that none is saved for this workspace yet. |
-| `/skill:brainstorm`, `/skill:domain-modeling`, and `/skill:teach` autocomplete | All three skills are listed. You do not need to run them to verify discovery. |
+| `/skill:brainstorm`, `/skill:domain-modeling`, `/skill:spec`, and `/skill:teach` autocomplete | All four skills are listed. You do not need to run them to verify discovery. |
 | `/decision` | Opens the brainstorming panel; on a new session it shows that no brainstorm has started. |
 | `/glossary` | Lists terms from the project's `GLOSSARY.md`, or reports that no glossary exists. See the [format and lookup guide](README.md#brainstorming-and-project-glossary). |
 

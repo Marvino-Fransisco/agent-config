@@ -6,4 +6,4 @@ case "$agent_dir" in
 esac
 
 extension_names='shared ui task-memory prompt tutor undo-send brainstorming'
-skill_names='brainstorm domain-modeling teach'
+skill_names='brainstorm domain-modeling spec teach'

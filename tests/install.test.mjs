@@ -25,14 +25,15 @@ test("install and uninstall are repeatable and only create or remove configurati
   succeeds("install");
   succeeds("install");
   assert.deepEqual(readdirSync(join(agent, "extensions")).sort(), ["brainstorming", "prompt", "shared", "task-memory", "tutor", "ui", "undo-send"]);
-  assert.deepEqual(readdirSync(join(agent, "skills")).sort(), ["brainstorm", "domain-modeling", "teach"]);
+  assert.deepEqual(readdirSync(join(agent, "skills")).sort(), ["brainstorm", "domain-modeling", "spec", "teach"]);
+  assert.equal(realpathSync(join(agent, "skills/spec")), join(root, "skills/spec"));
   writeFileSync(join(agent, "settings.json"), "{}");
   succeeds("uninstall");
   succeeds("uninstall");
   assert.deepEqual(readdirSync(join(agent, "extensions")), []);
   assert.deepEqual(readdirSync(join(agent, "skills")), []);
   assert.equal(readFileSync(join(agent, "settings.json"), "utf8"), "{}");
-  assert.ok(readFileSync(join(root, "skills/teach/SKILL.md"), "utf8"));
+  assert.ok(readFileSync(join(root, "skills/spec/SKILL.md"), "utf8"));
 });
 
 test("uninstall leaves conflicts untouched and keeps shared for separately installed long-memory", (t) => {

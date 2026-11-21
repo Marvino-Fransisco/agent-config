@@ -6,6 +6,8 @@ test -f "$repo/extensions/ui/index.ts"
 test -f "$repo/extensions/brainstorming/index.ts"
 test -f "$repo/skills/brainstorm/SKILL.md"
 test -f "$repo/skills/domain-modeling/SKILL.md"
+test -f "$repo/skills/spec/SKILL.md"
+test -f "$repo/skills/spec/SPEC-TEMPLATE.md"
 test -f "$repo/skills/teach/SKILL.md"
 mkdir -p "$agent_dir/extensions" "$agent_dir/skills"
 
