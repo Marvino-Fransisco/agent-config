@@ -5,7 +5,7 @@ import { accountIdFromToken, formatClaudeUsage, formatCodexUsage, levelColor, pr
 test("claude usage renders bar, percent used, absolute reset and level colors", () => {
 	const now = Date.parse("2026-11-03T00:00:00Z");
 	const text = formatClaudeUsage({ five_hour: { utilization: 15, resets_at: "2026-11-03T05:29:59.7Z" }, seven_day: { utilization: 75, resets_at: "2026-11-07T20:59:59Z" }, seven_day_sonnet: { utilization: 95, resets_at: null }, seven_day_opus: null }, now, "Asia/Jakarta");
-	assert.match(text, /^Current session\n\x1b\[38;2;105;180;255m█{7}▌ {42}\x1b\[39m \x1b\[38;2;105;180;255m15% used/);
+	assert.match(text, /^Current session\n\x1b\[38;2;105;180;255m\x1b\[48;2;64;64;64m█{7}▌ {42}\x1b\[49m\x1b\[39m \x1b\[38;2;105;180;255m15% used/);
 	assert.match(text, /Resets 12:30pm \(Asia\/Jakarta\)/);
 	assert.match(text, /Current week \(all models\)\n\x1b\[33m.*75% used.*\nResets Nov 8 at 4am \(Asia\/Jakarta\)/);
 	assert.match(text, /\x1b\[31m.*95% used\x1b\[39m$/);

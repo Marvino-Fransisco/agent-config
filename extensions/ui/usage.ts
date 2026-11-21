@@ -22,6 +22,8 @@ const REFRESH_MS = 60000;
 const SAFE = "\x1b[38;2;105;180;255m";
 const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
+const TRACK = "\x1b[48;2;64;64;64m";
+const RESET_TRACK = "\x1b[49m";
 const RESET = "\x1b[39m";
 
 export function levelColor(percent: number): string {
@@ -47,7 +49,7 @@ function render(rows: Row[], now: number, timeZone = Intl.DateTimeFormat().resol
 	if (!rows.length) throw new Error("Usage response had no limit windows");
 	return rows.map((row) => {
 		const color = levelColor(row.percent);
-		return [row.label, `${color}${bar(row.percent, barWidth)}${RESET} ${color}${row.percent.toFixed(0)}% used${RESET}`, row.resetsAt === null ? "" : resetText(row.resetsAt, now, timeZone)].filter(Boolean).join("\n");
+		return [row.label, `${color}${TRACK}${bar(row.percent, barWidth)}${RESET_TRACK}${RESET} ${color}${row.percent.toFixed(0)}% used${RESET}`, row.resetsAt === null ? "" : resetText(row.resetsAt, now, timeZone)].filter(Boolean).join("\n");
 	}).join("\n\n");
 }
 
