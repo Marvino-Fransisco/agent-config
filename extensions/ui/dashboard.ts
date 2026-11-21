@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { VERSION } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type OverlayHandle, type OverlayOptions, type TUI } from "@earendil-works/pi-tui";
@@ -47,11 +48,13 @@ const gradient = (row: number, text: string) => {
 export function registerDashboard(pi: ExtensionAPI, getFooterData: () => ReadonlyFooterDataProvider | undefined): void {
 	let collapse: (() => void) | undefined;
 	let hide: (() => void) | undefined;
-	pi.events?.on?.("ui:tutor:split", () => {
+	const dismiss = () => {
 		hide?.();
 		hide = undefined;
 		collapse = undefined;
-	});
+	};
+	pi.events?.on?.("ui:tutor:split", dismiss);
+	pi.events?.on?.("ui:dashboard:dismiss", dismiss);
 
 	const available = () => {
 		const names = new Set(pi.getCommands().map((c) => c.name));
@@ -120,8 +123,6 @@ function rows(pi: ExtensionAPI, ctx: ExtensionContext, getFooterData: () => Read
 	return out;
 }
 
-const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
-
 function showDashboard(tui: TUI, getRows: () => Row[], run: (action: Action) => void) {
 	let frame = 0;
 	let collapsing = false;
@@ -155,7 +156,7 @@ function showDashboard(tui: TUI, getRows: () => Row[], run: (action: Action) => 
 			visible = content.slice(Math.max(0, -row));
 			const faded = collapsing && progress > 0.3;
 			return visible.map((r) => {
-				const text = truncateToWidth(faded ? MUTED(strip(r.text)) : r.text, width, "…");
+				const text = truncateToWidth(faded ? MUTED(stripVTControlCharacters(r.text)) : r.text, width, "…");
 				return " ".repeat(Math.max(0, Math.floor((width - visibleWidth(text)) / 2))) + text;
 			});
 		},

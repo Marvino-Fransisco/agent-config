@@ -20,7 +20,7 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.6.0
 
 If Pi is already installed, do not replace it just to follow this guide. Check that the extensions load on your version before treating the setup as complete.
 
-## 2. Link the core extensions and skill
+## 2. Link the core extensions and skills
 
 Open the root of this repository in a terminal. If you do not already have a checkout, clone it first:
 
@@ -31,37 +31,13 @@ cd pi-config
 
 Keep the checkout at a stable location: Pi loads directly from these links. The core extensions do not need a database or a separate `npm install`.
 
-Run this from the repository root. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the block is safe after resolving it.
+Run [install.sh](install.sh) from the repository root. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the script is safe after resolving it.
 
 ```sh
-(
-  set -eu
-  repo=$(pwd -P)
-  agent_dir=${PI_CODING_AGENT_DIR:-"$HOME/.pi/agent"}
-  test -f "$repo/extensions/ui/index.ts"
-  test -f "$repo/skills/teaching/SKILL.md"
-  mkdir -p "$agent_dir/extensions" "$agent_dir/skills"
-
-  link() {
-    test -d "$1"
-    if [ -L "$2" ] && [ "$1" -ef "$2" ]; then
-      return
-    fi
-    if [ -e "$2" ] || [ -L "$2" ]; then
-      printf 'Existing path; inspect before replacing: %s\n' "$2" >&2
-      return 1
-    fi
-    ln -s "$1" "$2"
-  }
-
-  for name in shared ui task-memory prompt tutor undo-send; do
-    link "$repo/extensions/$name" "$agent_dir/extensions/$name"
-  done
-  link "$repo/skills/teaching" "$agent_dir/skills/teaching"
-)
+./install.sh
 ```
 
-`shared` is not a standalone extension; keep it alongside the extension links so relative imports resolve. The skill link makes `/skill:teaching` available in Main. Tutor reads the same skill from this checkout.
+`shared` is not a standalone extension; keep it alongside the extension links so relative imports resolve. The skill links make `/skill:brainstorm`, `/skill:domain-modeling`, and `/skill:teach` available in Main. Run `/skill:teach <topic>` from the directory where you want to keep your lessons and learning records.
 
 ## 3. Reload and verify
 
@@ -72,7 +48,9 @@ Start `pi` from the workspace you want to use, or run `/reload` in an existing P
 | `/context` and `/task` | The context report and task panel open in turn. |
 | `/tutor` | Tutor opens. In fullscreen at 76 columns or wider (and at least 12 rows), it appears beside Main. Otherwise it uses an overlay if there is enough space. |
 | `/prompt` | The last sent Main prompt opens, or Pi reports that none is saved for this workspace yet. |
-| `/skill:teaching` autocomplete | The teaching skill is listed. You do not need to run it to verify discovery. |
+| `/skill:brainstorm`, `/skill:domain-modeling`, and `/skill:teach` autocomplete | All three skills are listed. You do not need to run them to verify discovery. |
+| `/decision` | Opens the brainstorming panel; on a new session it shows that no brainstorm has started. |
+| `/glossary` | Lists terms from the project's `GLOSSARY.md`, or reports that no glossary exists. See the [format and lookup guide](README.md#brainstorming-and-project-glossary). |
 
 To send a message, select a configured model with `/model`. If needed, use `/login` to connect a supported provider. Do not paste credentials into an agent conversation. Sending a Tutor question uses the selected provider; the checks above do not require a model call.
 

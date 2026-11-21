@@ -234,6 +234,7 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   const cwd = join(directory, "src");
   await mkdir(cwd);
   await writeFile(join(directory, "Reference File.ts"), "not automatically attached");
+  await writeFile(join(directory, "GLOSSARY.md"), "## Withdrawal\nAliases: WD\nCancels an active enrollment.\n\n## Invoice\nRequests payment.\n");
   const model = { id: "mock", provider: "test", api: "test-api" };
   const branch = [entry("old", "assistant", "Enrollment withdrawal needs an approval."),
     ...Array.from({ length: 10 }, (_, i) => entry(`other-${i}`, "user", `Unrelated ${i}`))];
@@ -256,7 +257,10 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
       streamSimple(_model: unknown, context: any) {
         requests.push(context);
         const content = requests.length === 1
-          ? [{ type: "toolCall", id: "lookup", name: "search_main_history", arguments: { query: "withdrawal" } }]
+          ? [
+            { type: "toolCall", id: "lookup", name: "search_main_history", arguments: { query: "withdrawal" } },
+            { type: "toolCall", id: "glossary", name: "domain_glossary", arguments: { query: "WD" } },
+          ]
           : [{ type: "text", text: requests.length === 2 ? "Explanation with reference to main entry old." : "Suggested summary" }];
         const reply = { role: "assistant", content, api: model.api, model: model.id, provider: model.provider,
           stopReason: requests.length === 1 ? "toolUse" : "stop", timestamp: Date.now() };
@@ -336,15 +340,19 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   assert.match(await readFile(join(directory, ".pi", "tutor-history", saved), "utf8"), /Explanation with reference/);
   assert.deepEqual(await readdir(cwd), []);
   assert.match(JSON.stringify(requests[0].messages.find(({ role }: { role: string }) => role === "system")), /Always write Tutor replies and handoff summaries in English/);
-  assert.doesNotMatch(JSON.stringify(requests[0]), /needs an approval|post-open|not automatically attached/);
+  const defaultPrompt = requests[0].messages[0].content;
+  assert.doesNotMatch(defaultPrompt, /When explaining a question or recommendation from another agent|zone of proximal development/);
+  assert.doesNotMatch(JSON.stringify(requests[0]), /needs an approval|post-open|not automatically attached|Cancels an active enrollment/);
   assert.match(JSON.stringify(requests[0]), /Explain the previous decision in @.*Reference File\.ts/);
   assert.match(JSON.stringify(requests[1]), /needs an approval/);
-  assert.doesNotMatch(JSON.stringify(requests[1]), /post-open/);
+  assert.match(JSON.stringify(requests[1]), /Cancels an active enrollment/);
+  assert.doesNotMatch(JSON.stringify(requests[1]), /post-open|Requests payment/);
   assert.equal(editorWrites, 0);
   panel.handleInput("\x1bOS");
   await until(() => panel.dialogs.active?.title.startsWith("Review or edit"));
   assert.ok(frames.some((frame) => frame.includes("Summarizing the discussion")));
   assert.match(JSON.stringify(requests[2].messages), /for the main agent, in English/);
+  assert.equal(requests[2].messages[0].content, defaultPrompt);
   panel.handleInput("\r");
   await until(() => panel.dialogs.active?.title.startsWith("Insert handoff"));
   assert.match(panel.render(60).join("\n"), /Insert draft and focus Main/);
@@ -365,5 +373,17 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   assert.equal(focused, false);
   assert.equal(editorWrites, 1);
   assert.equal(mainDraft, "Existing Main draft\n\nTutor discussion summary (approved by the user):\n\nEdited summary");
+  shortcut!(ctx);
+  await until(() => focused);
+  for (const letter of "/teach spaced repetition") panel.handleInput(letter);
+  panel.handleInput("\r");
+  await until(() => requests.length === 5 && panel.render(60).join("\n").includes("Ready to teach"));
+  const teachPrompt = requests[4].messages[0];
+  assert.match(teachPrompt.content, /zone of proximal development/);
+  assert.match(teachPrompt.content, /in chat only[\s\S]*do not create or update files[\s\S]*\/skill:teach in Main/);
+  assert.ok(teachPrompt.content.includes(JSON.stringify(cwd)));
+  assert.deepEqual(teachPrompt.toolsAdded.map(({ name }: { name: string }) => name), ["read", "ls", "grep", "find", "search_main_history", "domain_glossary"]);
+  assert.deepEqual(await readdir(cwd), []);
+  assert.equal(editorWrites, 1);
   shutdown!();
 });
