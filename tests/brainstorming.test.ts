@@ -5,6 +5,7 @@ import brainstorming from "../extensions/brainstorming/index.ts";
 function harness() {
   const branch: unknown[] = [];
   const approvals: string[] = [];
+  const panelEvents: string[] = [];
   const handlers = new Map<string, (data: unknown, ctx?: unknown) => void>();
   let approved = false;
   let execute: (id: string, args: unknown, signal: unknown, update: unknown, ctx: unknown) => Promise<{ content: [{ text: string }] }>;
@@ -17,6 +18,7 @@ function harness() {
     ui: {
       confirm: async (_title: string, message: string) => {
         assert.equal(overlay, undefined, "/decision must close before approval opens");
+        panelEvents.push("approval shown");
         approvals.push(message);
         return approved;
       },
@@ -25,21 +27,25 @@ function harness() {
         showOverlay(component: typeof overlay, options: { anchor: string }) {
           overlay = component;
           anchor = options.anchor;
-          return { focus() {}, isFocused: () => true, hide() { overlay = undefined; } };
+          return { focus() { panelEvents.push("decision focused"); }, isFocused: () => true, hide() { overlay = undefined; } };
         },
       }, { fg: (_color: string, text: string) => text }),
     },
   };
   brainstorming({
     on: (name: string, handler: (data: unknown, ctx: unknown) => void) => handlers.set(name, handler),
-    events: { on: (name: string, handler: (data: unknown) => void) => handlers.set(name, handler), emit: (name: string, data: unknown) => handlers.get(name)?.(data) },
+    events: { on: (name: string, handler: (data: unknown) => void) => handlers.set(name, handler), emit: (name: string, data: unknown) => {
+      if (name === "ui:dashboard:dismiss") panelEvents.push("dashboard dismissed");
+      if (name === "ui:panel:opening" && (data as { name: string }).name === "decision") panelEvents.push("other panels dismissed");
+      handlers.get(name)?.(data);
+    } },
     registerTool: (tool: { name: string; execute: typeof execute }) => { if (tool.name === "brainstorming") execute = tool.execute; },
     registerCommand: (name: string, definition: { handler: typeof command }) => { if (name === "decision") command = definition.handler; },
     appendEntry: (customType: string, data: unknown) => branch.push({ type: "custom", customType, data }),
   } as never);
   handlers.get("session_start")?.({}, ctx);
   return {
-    branch, approvals, ctx, approve: (value: boolean) => { approved = value; },
+    branch, approvals, panelEvents, ctx, approve: (value: boolean) => { approved = value; },
     call: async (args: unknown) => (await execute("call", args, undefined, undefined, ctx)).content[0].text,
     panel: () => overlay, anchor: () => anchor,
     open: () => command("", ctx),
@@ -59,6 +65,7 @@ test("tracks branch coverage and only saves decisions and brief with approval", 
   await h.open();
   assert.ok(h.panel());
   await h.call({ action: "update", decisions: ["Expire after 2 days"] });
+  assert.deepEqual(h.panelEvents.slice(-3), ["dashboard dismissed", "other panels dismissed", "approval shown"]);
   assert.doesNotMatch(await h.call({ action: "read" }), /Expire after 2 days/);
 
   h.approve(true);
@@ -82,6 +89,7 @@ test("decision command opens the shared top-right panel and yields to other pane
   const h = harness();
   await h.call({ action: "start", topic: "Order expiry" });
   await h.open();
+  assert.deepEqual(h.panelEvents, ["dashboard dismissed", "other panels dismissed", "decision focused"]);
   assert.equal(h.anchor(), "top-right");
   assert.match(h.panel()!.render(60).join("\n"), /Order expiry/);
   assert.match(h.panel()!.render(60).join("\n"), /No confirmed decisions/);

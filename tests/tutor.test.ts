@@ -247,6 +247,7 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   let mainDraft = "Existing Main draft";
   let editorWrites = 0;
   let overlayClosed = false;
+  let panelOpening: (data: { name: string }) => void;
   const control = {
     focus() { focused = true; }, unfocus() { focused = false; }, isFocused() { return focused; },
   };
@@ -298,6 +299,9 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
     registerCommand() {},
     registerShortcut(_key: string, options: { handler: typeof shortcut }) { shortcut = options.handler; },
     on(_name: string, callback: typeof shutdown) { shutdown = callback; },
+    events: { on(name: string, callback: typeof panelOpening) {
+      if (name === "ui:panel:opening") panelOpening = callback;
+    } },
     sendMessage() { assert.fail("Handoff must not dispatch or queue a message"); },
   } as never);
   async function until(check: () => boolean) {
@@ -334,7 +338,7 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   assert.ok(frames.some((frame) => frame.includes("Reading the question")));
   assert.ok(frames.some((frame) => frame.includes("Exploring code and context")));
   assert.ok(frames.some((frame) => frame.includes("Explaining step by step")));
-  assert.match(panel.render(60).join("\n"), /\x1b\[44m[^\n]*Explain the previous decision/);
+  assert.ok(panel.render(60).some((line: string) => line.includes("\x1b[44m") && line.includes("Explain the previous decision")));
   assert.doesNotMatch(panel.render(60).join("\n"), /│\s+(You|Tutor)\s+│/);
   const [saved] = await readdir(join(directory, ".pi", "tutor-history"));
   assert.match(await readFile(join(directory, ".pi", "tutor-history", saved), "utf8"), /Explanation with reference/);
@@ -388,5 +392,13 @@ test("Tutor uses frozen history and fills the Main draft only after handoff conf
   assert.deepEqual(teachPrompt.toolsAdded.map(({ name }: { name: string }) => name), ["read", "ls", "grep", "find", "search_main_history", "domain_glossary"]);
   assert.deepEqual(await readdir(cwd), []);
   assert.equal(editorWrites, 1);
+  overlayClosed = false;
+  panelOpening!({ name: "context" });
+  assert.equal(focused, true);
+  panelOpening!({ name: "decision" });
+  assert.equal(overlayClosed, true);
+  assert.equal(focused, false);
+  shortcut!(ctx);
+  await until(() => focused);
   shutdown!();
 });

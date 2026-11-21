@@ -72,13 +72,17 @@ export default function (pi: ExtensionAPI): void {
   });
 
   let panel: ReturnType<typeof createNotes> | undefined;
+  const dismissCompetingPanels = () => {
+    pi.events.emit("ui:dashboard:dismiss", undefined);
+    pi.events.emit("ui:panel:opening", { name: "decision" });
+  };
   pi.events.on("ui:panel:opening", (data) => { if ((data as { name: string }).name !== "decision") panel?.close(); });
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
     ctx.ui.setWidget("decision-overlay", (tui, theme) => {
       panel?.close();
       panel = createNotes(tui, theme, () => formatState(readState(ctx)), (message) => ctx.ui.notify(message, "error"),
-        "decision", () => pi.events.emit("ui:panel:opening", { name: "decision" }));
+        "decision", dismissCompetingPanels);
       return { invalidate() {}, render: () => [] };
     });
   });
@@ -87,7 +91,8 @@ export default function (pi: ExtensionAPI): void {
     description: "Show confirmed brainstorming decisions, coverage, and the approved brief",
     async handler(_args, ctx) {
       if (panel?.canShow()) { panel.toggle(); return; }
-      pi.events.emit("ui:dashboard:dismiss", undefined);
+      panel?.close();
+      dismissCompetingPanels();
       ctx.ui.notify(formatState(readState(ctx)), "info");
     },
   });
@@ -127,6 +132,7 @@ export default function (pi: ExtensionAPI): void {
         if (changesDecisions) {
           if (!ctx.hasUI) throw new Error("An interactive user must approve decision changes.");
           panel?.close();
+          dismissCompetingPanels();
           const approved = await ctx.ui.confirm("Replace confirmed brainstorming decisions?",
             `Current:\n${formatDecisions(state.decisions)}\n\nProposed:\n${formatDecisions(decisions)}`, { signal });
           if (!approved || signal?.aborted) return result("Decision changes not approved. No changes saved.");
@@ -142,6 +148,7 @@ export default function (pi: ExtensionAPI): void {
       if (!ctx.hasUI) throw new Error("An interactive user must approve the shared-understanding brief.");
       const brief = requiredText(params.brief, "Brief");
       panel?.close();
+      dismissCompetingPanels();
       const approved = await ctx.ui.confirm("Does this brief match our shared understanding?", `${state.topic}\n\n${brief}\n\nConfirmed decisions:\n${formatDecisions(state.decisions)}`, { signal });
       if (!approved || signal?.aborted) return result("Brief not approved. Ask what needs to change before implementing.");
       return save({ ...state, brief });

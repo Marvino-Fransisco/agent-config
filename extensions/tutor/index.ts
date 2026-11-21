@@ -20,6 +20,9 @@ export default function tutorExtension(pi: ExtensionAPI) {
 
   pi.registerCommand("tutor", { description: "Open or focus the read-only Tutor", handler: async (_args, ctx) => open(ctx) });
   pi.registerShortcut("ctrl+alt+u", { description: "Focus Tutor", handler: open });
+  pi.events?.on("ui:panel:opening", (data) => {
+    if ((data as { name: string }).name === "decision") active?.close();
+  });
   pi.on("session_shutdown", () => {
     active?.dispose();
     active = undefined;
@@ -28,7 +31,7 @@ export default function tutorExtension(pi: ExtensionAPI) {
 
 function controller(pi: ExtensionAPI, cwd: string) {
   let disposed = false;
-  let opening = false;
+  let opening: symbol | undefined;
   let managing = false;
   let view: { close: () => void; focusMain: () => void; render: () => void; dialogs: ReturnType<typeof createTutorPanel>["dialogs"]; handle?: TutorHandle } | undefined;
   let project: Awaited<ReturnType<typeof resolveProject>> | undefined;
@@ -127,8 +130,9 @@ function controller(pi: ExtensionAPI, cwd: string) {
     }
   }
 
-  async function manage(ctx: ExtensionContext, snapshot: MainSnapshot, action: TutorAction | "menu") {
+  async function manage(ctx: ExtensionContext, snapshot: MainSnapshot, requestedAction: TutorAction | "menu") {
     if (disposed || run || managing || !view || !store || !project) return;
+    let action = requestedAction;
     managing = true;
     const panel = view;
     status = "";
@@ -166,15 +170,21 @@ function controller(pi: ExtensionAPI, cwd: string) {
     }
   }
 
+  function close() {
+    opening = undefined;
+    view?.close();
+  }
+
   return {
     async open(ctx: ExtensionContext) {
       if (disposed || opening || managing) return;
       if (view) { view.handle?.focus(); render(); return; }
-      opening = true;
+      const request = Symbol();
+      opening = request;
       try {
         const snapshot = captureMain(ctx.sessionManager.getBranch());
         project ??= await resolveProject(cwd);
-        if (disposed) return;
+        if (opening !== request) return;
         const { root } = project;
         store ??= createTutorStore(root);
         const makePanel = (tui: TUI, theme: Theme, close: () => void, split = false) => createTutorPanel(tui, theme, {
@@ -218,13 +228,14 @@ function controller(pi: ExtensionAPI, cwd: string) {
         });
         void interaction.catch((error) => { view = undefined; if (!disposed) ctx.ui.notify(errorText(error), "error"); });
       } finally {
-        opening = false;
+        if (opening === request) opening = undefined;
       }
     },
+    close,
     dispose() {
       disposed = true;
       run?.abort(new Error("Main session closed"));
-      view?.close();
+      close();
     },
   };
 }
