@@ -1,5 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { createNotes } from "../shared/panel.ts";
 import { glossaryResult, glossaryTool, lookupGlossary } from "../shared/glossary.ts";
@@ -55,6 +56,57 @@ function formatState(state: State | undefined): string {
     }),
     ...(state.brief ? ["", "Approved brief", state.brief] : []),
   ].join("\n");
+}
+
+async function confirmReview(ctx: ExtensionContext, title: string, message: string, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
+  if (ctx.mode !== "tui") return ctx.ui.confirm(title, message, { signal });
+
+  return ctx.ui.custom<boolean>((tui, theme, _keys, done) => {
+    let offset = 0;
+    let height = 0;
+    let lastWidth = 0;
+    let lines: string[] = [];
+    const cancel = () => done(false);
+    if (signal?.aborted) cancel();
+    else signal?.addEventListener("abort", cancel, { once: true });
+
+    const scroll = (delta: number) => {
+      offset = Math.max(0, Math.min(offset + delta, lines.length - height));
+      tui.requestRender();
+    };
+    return {
+      invalidate() {},
+      dispose() { signal?.removeEventListener("abort", cancel); },
+      render(width) {
+        if (width !== lastWidth) {
+          lines = message.split("\n").flatMap((line) => wrapTextWithAnsi(line, width));
+          lastWidth = width;
+        }
+        const controls = theme.fg("accent", "y Yes · n/Esc No · ↑↓ PgUp/PgDn");
+        const fit = (line: string) => truncateToWidth(line, width, "…", true);
+        if (tui.terminal.rows < 2) return [fit(controls)];
+        height = Math.max(0, Math.min(lines.length, tui.terminal.rows - 2));
+        offset = Math.min(offset, lines.length - height);
+        const end = offset + height;
+        const position = height && height < lines.length ? `[${offset + 1}–${end}/${lines.length}] ` : "";
+        return [fit(theme.fg("accent", position + title)), ...lines.slice(offset, end).map(fit), fit(controls)];
+      },
+      handleInput(data) {
+        if (matchesKey(data, "y")) done(true);
+        else if (matchesKey(data, "n") || matchesKey(data, "escape")) cancel();
+        else if (matchesKey(data, "up")) scroll(-1);
+        else if (matchesKey(data, "down")) scroll(1);
+        else if (matchesKey(data, "pageUp")) scroll(-height);
+        else if (matchesKey(data, "pageDown")) scroll(height);
+      },
+      handleMouse(event) {
+        if (event.type !== "wheel") return;
+        scroll(event.wheelDelta ?? 0);
+        return { handled: true };
+      },
+    };
+  }, { overlay: true, overlayOptions: { width: "90%" }, blocked: { kind: "question", message: title } });
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -133,8 +185,8 @@ export default function (pi: ExtensionAPI): void {
           if (!ctx.hasUI) throw new Error("An interactive user must approve decision changes.");
           panel?.close();
           dismissCompetingPanels();
-          const approved = await ctx.ui.confirm("Replace confirmed brainstorming decisions?",
-            `Current:\n${formatDecisions(state.decisions)}\n\nProposed:\n${formatDecisions(decisions)}`, { signal });
+          const approved = await confirmReview(ctx, "Replace confirmed brainstorming decisions?",
+            `Current:\n${formatDecisions(state.decisions)}\n\nProposed:\n${formatDecisions(decisions)}`, signal);
           if (!approved || signal?.aborted) return result("Decision changes not approved. No changes saved.");
         }
         return save({ topic: state.topic, coverage, decisions });
@@ -149,7 +201,7 @@ export default function (pi: ExtensionAPI): void {
       const brief = requiredText(params.brief, "Brief");
       panel?.close();
       dismissCompetingPanels();
-      const approved = await ctx.ui.confirm("Does this brief match our shared understanding?", `${state.topic}\n\n${brief}\n\nConfirmed decisions:\n${formatDecisions(state.decisions)}`, { signal });
+      const approved = await confirmReview(ctx, "Does this brief match our shared understanding?", `${state.topic}\n\n${brief}\n\nConfirmed decisions:\n${formatDecisions(state.decisions)}`, signal);
       if (!approved || signal?.aborted) return result("Brief not approved. Ask what needs to change before implementing.");
       return save({ ...state, brief });
     },
