@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,7 +8,7 @@ import pg from "pg";
 import extension from "../extensions/long-memory/index.ts";
 import { closePools, debugRetrieval, embed, getMemory, getRevision, listTrash, memoryHistory, memoryStats, normalizeKind, purgeMemory, reindexMemories, relinkProject, restoreRevision, saveMemory, undeleteMemory, updateMemory, deleteMemory, listMemories, searchMemories, queryMemory } from "../extensions/long-memory/src/store.ts";
 import { ago, createPanel, formatForAgent, formatTable, renderStats, searchPanel, similarityMeter } from "../extensions/long-memory/ui/panel.ts";
-import { backupDue, pruneBackups } from "../extensions/long-memory/src/backup.ts";
+import { backupDatabase, backupDue, listBackups, pruneBackups } from "../extensions/long-memory/src/backup.ts";
 
 const plain = (lines: string[]) => lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
 const active = (label: string) => new RegExp(`48;2;90;175;255m [^ ]+ ${label} `);
@@ -153,6 +153,35 @@ test("backup retention keeps the newest dumps and reports when a backup is due",
     assert.equal(backupDue(dir), false);
     assert.equal(backupDue(dir, Date.now() + 25 * 60 * 60 * 1000), true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("backup finds the running memory database and dumps it without Compose", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "memory-backup-cli-"));
+  const docker = join(dir, "docker");
+  const path = process.env.PATH;
+  try {
+    process.env.PATH = dir;
+    writeFileSync(docker, `#!/bin/sh
+if [ "$*" = 'ps --format {{.ID}} --filter label=com.docker.compose.project=long-memory --filter label=com.docker.compose.service=postgres --filter label=com.docker.compose.oneoff=False' ]; then
+  printf '%s\\n' abc123
+elif [ "$*" = 'exec abc123 pg_dump -U memory_owner -d pi_memory -Fc' ]; then
+  printf '%s' PGDMP
+else
+  exit 125
+fi
+`, { mode: 0o700 });
+    const file = await backupDatabase(2, dir);
+    assert.equal(readFileSync(file, "utf8"), "PGDMP");
+    assert.equal(listBackups(dir).length, 1);
+
+    writeFileSync(docker, "#!/bin/sh\nexit 0\n");
+    await assert.rejects(backupDatabase(2, dir), /one running long-memory PostgreSQL container, found 0/);
+    assert.equal(listBackups(dir).length, 1);
+  } finally {
+    if (path === undefined) delete process.env.PATH;
+    else process.env.PATH = path;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("memory command discovers actions and manages sticky overlay focus", async () => {

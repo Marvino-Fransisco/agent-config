@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { createNotes } from "../shared/panel.ts";
 import { glossaryResult, glossaryTool, lookupGlossary } from "../shared/glossary.ts";
@@ -27,7 +27,10 @@ function readState(ctx: ExtensionContext): State | undefined {
 }
 
 function clean(text: string): string {
-  return stripVTControlCharacters(text).replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g, "").trim();
+  return Array.from(stripVTControlCharacters(text)).filter((char) => {
+    const code = char.charCodeAt(0);
+    return code === 10 || (code >= 32 && (code < 127 || code > 159));
+  }).join("").trim();
 }
 
 function requiredText(text: string | undefined, label: string): string {
@@ -79,18 +82,27 @@ async function confirmReview(ctx: ExtensionContext, title: string, message: stri
       invalidate() {},
       dispose() { signal?.removeEventListener("abort", cancel); },
       render(width) {
+        const controls = theme.fg("accent", "y Yes · n/Esc No · ↑↓ PgUp/PgDn");
+        if (width < 5 || tui.terminal.rows < 4) return [truncateToWidth(controls, width, "…", true)];
+
+        const textWidth = width - 4;
         if (width !== lastWidth) {
-          lines = message.split("\n").flatMap((line) => wrapTextWithAnsi(line, width));
+          lines = message.split("\n").flatMap((line) => wrapTextWithAnsi(line, textWidth));
           lastWidth = width;
         }
-        const controls = theme.fg("accent", "y Yes · n/Esc No · ↑↓ PgUp/PgDn");
-        const fit = (line: string) => truncateToWidth(line, width, "…", true);
-        if (tui.terminal.rows < 2) return [fit(controls)];
-        height = Math.max(0, Math.min(lines.length, tui.terminal.rows - 2));
+        height = Math.min(lines.length, tui.terminal.rows - 3);
         offset = Math.min(offset, lines.length - height);
         const end = offset + height;
-        const position = height && height < lines.length ? `[${offset + 1}–${end}/${lines.length}] ` : "";
-        return [fit(theme.fg("accent", position + title)), ...lines.slice(offset, end).map(fit), fit(controls)];
+        const position = height < lines.length ? `[${offset + 1}–${end}/${lines.length}] ` : "";
+        const heading = truncateToWidth(` ${position}${title} `, width - 2);
+        const border = (text: string) => theme.fg("accent", text);
+        const row = (text: string) => `${border("┃")} ${truncateToWidth(text, textWidth, "…", true)} ${border("┃")}`;
+        return [
+          border(`┏${heading}${"━".repeat(Math.max(0, width - 2 - visibleWidth(heading)))}┓`),
+          ...lines.slice(offset, end).map(row),
+          row(controls),
+          border(`┗${"━".repeat(width - 2)}┛`),
+        ];
       },
       handleInput(data) {
         if (matchesKey(data, "y")) done(true);

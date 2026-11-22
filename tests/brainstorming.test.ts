@@ -83,7 +83,7 @@ test("tracks branch coverage and only saves decisions and brief with approval", 
 
   h.approve(true);
   await h.call({ action: "update", decisions: ["Expire after 3 days"], coverage: { ...allCoverage, impact: { status: "not_relevant", note: "No API change." } } });
-  assert.match(h.approvals.at(-1)!, /Proposed:\nD1\. Expire after 3 days/);
+  assert.match(h.approvals.at(-1)!, /┃ Proposed: +┃\n┃ D1\. Expire after 3 days/);
   const beforeBrief = h.branch.length;
   h.approve(false);
   await h.open();
@@ -110,9 +110,14 @@ test("long decisions can be reviewed without scrolling away the approval control
   const changes = h.call({ action: "update", decisions: [...decisions.slice(0, -1), "Final proposed rule"] });
   const review = h.review()!;
   const frame = () => {
-    const lines = review.render(45);
+    const width = 64;
+    const lines = review.render(width);
     assert.equal(lines.length, h.terminal.rows);
-    assert.match(lines.at(-1)!, /y Yes · n\/Esc No/);
+    assert.ok(lines.every((line) => line.length === width));
+    assert.match(lines[0], /^┏.*┓$/);
+    assert.ok(lines.slice(1, -1).every((line) => /^┃.*┃$/.test(line)));
+    assert.match(lines.at(-2)!, /y Yes · n\/Esc No/);
+    assert.match(lines.at(-1)!, /^┗━+┛$/);
     return lines.join("\n");
   };
   assert.match(frame(), /Current:/);

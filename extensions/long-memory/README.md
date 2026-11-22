@@ -35,7 +35,7 @@ docker compose --env-file extensions/long-memory/.env -f extensions/long-memory/
 
 Reload Pi with `/reload`. The extension reads its `.env` automatically, regardless of the active project, and builds local connection URLs from the database passwords and port. Existing process environment variables take precedence; explicit `MEMORY_DATABASE_URL` and `MEMORY_READER_DATABASE_URL` override generated URLs. Docker Compose also gives shell variables precedence over `--env-file`, so conflicting exported values can cause connection errors. The extension rereads the file when configuration is needed, but database password changes in the file do not change PostgreSQL's existing role passwords.
 
-Normal operations use the restricted `memory_app` role. Automatic backups run at session start when the latest backup is at least 24 hours old; `MEMORY_BACKUP=off` disables them and `MEMORY_BACKUP_KEEP` controls retention (default 7). Backups in `~/.pi/agent/long-memory/backups` contain private data; test restoration separately.
+Normal operations use the restricted `memory_app` role. Automatic backups run at session start when the latest backup is at least 24 hours old. The backup uses `docker exec` against the running `long-memory` PostgreSQL service; the Compose plugin is not required to take a backup. Set `MEMORY_BACKUP=off` to disable automatic backups and `MEMORY_BACKUP_KEEP` to control retention (default 7). Backups in `~/.pi/agent/long-memory/backups` contain private data; test restoration separately.
 
 The container uses `restart: unless-stopped`; it can start again when the Docker daemon starts. Docker Desktop itself must be running after login. If the database or Docker is stopped, Pi reports a connection error rather than starting it automatically.
 

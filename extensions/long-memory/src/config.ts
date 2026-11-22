@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
 export const ENV_PATH = fileURLToPath(new URL("../.env", import.meta.url));
-export const COMPOSE_PATH = fileURLToPath(new URL("../docker/compose.yml", import.meta.url));
 
 export interface MemoryConfig {
   appUrl?: string;

@@ -22,13 +22,13 @@ Restate the goal, scope, and constraints. Inspect only relevant code. Do not edi
 
 Build the decision tree from conversation history, confirmed decisions, and coverage. Do not persist a separate tree or invent missing answers. The frontier is all unanswered decisions whose prerequisites are settled.
 
-- Verify facts yourself: use a fresh sub-agent when available, or inspect directly. Pending research blocks only dependent questions. Ask the user to decide, not to investigate facts you can verify.
+- Verify facts yourself: inspect directly. Pending research blocks only dependent questions. Ask the user to decide, not to investigate facts you can verify.
 - Ask the entire frontier each round. Number questions uniquely across rounds, explain the trade-off, and phrase each question so “yes” accepts your recommendation. Never ask a question that depends on another answer in the same round.
 - Wait for answers, then recompute the frontier.
 
 Use this format, with `---` between questions:
 
-❓ **Q1 — Title:** Question with the relevant trade-off?
+**Q1 — Title:** Question with the relevant trade-off?
 
 ➡️ **Recommendation:** Preferred answer and brief rationale.
 

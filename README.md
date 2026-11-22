@@ -2,7 +2,7 @@
 
 A collection of extensions and skills for the [Pi coding agent](https://pi.dev/). It adds terminal UI improvements, a separate read-only Tutor, and tools for keeping track of work across sessions.
 
-**Getting started:** Follow [INSTALLATION.MD](INSTALLATION.MD) to install, reload, and verify the extensions. To remove this configuration, follow [UNINSTALL.md](UNINSTALL.md).
+**Getting started:** Follow [INSTALL.MD](./docs/INSTALL.MD) to install, reload, and verify the extensions. To remove this configuration, follow [UNINSTALL.md](./docs/UNINSTALL.md).
 
 | Feature | What it does |
 | --- | --- |
