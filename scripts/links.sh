@@ -5,5 +5,5 @@ case "$agent_dir" in
   *) agent_dir=$PWD/$agent_dir ;;
 esac
 
-extension_names='shared ui task-memory prompt tutor undo-send brainstorming'
+extension_names='shared ui task-memory prompt tutor undo-send brainstorming thinking-shortcuts'
 skill_names='brainstorm domain-modeling spec teach'

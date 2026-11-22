@@ -10,6 +10,7 @@ A collection of extensions and skills for the [Pi coding agent](https://pi.dev/)
 | [Slash Anywhere](#slash-anywhere) | Run commands or stage skills without submitting the Main draft. Press `Alt+/` to open the picker. |
 | Tutor | `/tutor` opens a separate English-language chat for code explanations and read-only workspace investigation. It can put an approved summary into the Main draft without sending it. |
 | Teach | `/skill:teach <topic>` in Main builds a learning workspace in the current directory: mission, sources, HTML lessons, references, and learning records. In Tutor, `/teach <topic>` uses the guidance in chat without writing workspace files. |
+| Thinking shortcuts | `Shift+↑` raises and `Shift+↓` lowers the current model's thinking level, wrapping in both directions. |
 | Last prompt | `/prompt` shows the last message sent from Main, not an unsent draft or a Tutor prompt. |
 | [Task memory](extensions/task-memory/README.md) | `/task` tracks ongoing work and supports handoffs across compaction and sessions. |
 | [Brainstorming and glossary](#brainstorming-and-project-glossary) | `/skill:brainstorm <prompt>` aligns on a change before coding; `/decision` shows confirmed decisions and coverage; `/glossary` searches project terms. |

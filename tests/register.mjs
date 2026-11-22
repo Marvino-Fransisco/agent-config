@@ -17,6 +17,7 @@ const stubs = new URL("./stubs.mjs", import.meta.url).href;
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "@earendil-works/pi-agent-core" ||
+        (specifier === "@earendil-works/pi-ai" && context.parentURL?.includes("/extensions/thinking-shortcuts/")) ||
         (specifier === "@earendil-works/pi-tui" && context.parentURL?.includes("/extensions/tutor/") && !context.parentURL.endsWith("/split.ts"))) {
       return next(specifier, { ...context, parentURL: anchor });
     }

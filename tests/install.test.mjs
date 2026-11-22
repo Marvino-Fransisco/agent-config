@@ -24,7 +24,7 @@ test("install and uninstall are repeatable and only create or remove configurati
   const { agent, succeeds } = setup(t);
   succeeds("install");
   succeeds("install");
-  assert.deepEqual(readdirSync(join(agent, "extensions")).sort(), ["brainstorming", "prompt", "shared", "task-memory", "tutor", "ui", "undo-send"]);
+  assert.deepEqual(readdirSync(join(agent, "extensions")).sort(), ["brainstorming", "prompt", "shared", "task-memory", "thinking-shortcuts", "tutor", "ui", "undo-send"]);
   assert.deepEqual(readdirSync(join(agent, "skills")).sort(), ["brainstorm", "domain-modeling", "spec", "teach"]);
   assert.equal(realpathSync(join(agent, "skills/spec")), join(root, "skills/spec"));
   writeFileSync(join(agent, "settings.json"), "{}");
