@@ -22,16 +22,16 @@ If Pi is already installed, do not replace it just to follow this guide. Check t
 
 ## 2. Link the core extensions and skills
 
-Open the root of this repository in a terminal. If you do not already have a checkout, clone it first:
+This configuration lives in the `pi/` folder of the `agent-config` repository. Open that folder in a terminal. If you do not already have a checkout, clone the repository first:
 
 ```sh
-git clone https://github.com/Marvino-Fransisco/pi-config.git
-cd pi-config
+git clone https://github.com/Marvino-Fransisco/agent-config.git
+cd agent-config/pi
 ```
 
 Keep the checkout at a stable location: Pi loads directly from these links. The core extensions do not need a database or a separate `npm install`.
 
-Run [scripts/install.sh](scripts/install.sh) from the repository root. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the script is safe after resolving it.
+Run [scripts/install.sh](../scripts/install.sh) from the `pi/` folder. It leaves correct links alone and stops at a conflicting path, including a broken symlink. Inspect a conflict before moving or replacing anything; rerunning the script is safe after resolving it.
 
 ```sh
 ./scripts/install.sh
@@ -50,16 +50,16 @@ Start `pi` from the workspace you want to use, or run `/reload` in an existing P
 | `/prompt` | The last sent Main prompt opens, or Pi reports that none is saved for this workspace yet. |
 | `/skill:brainstorm`, `/skill:domain-modeling`, `/skill:spec`, and `/skill:teach` autocomplete | All four skills are listed. You do not need to run them to verify discovery. |
 | `/decision` | Opens the brainstorming panel; on a new session it shows that no brainstorm has started. |
-| `/glossary` | Lists terms from the project's `GLOSSARY.md`, or reports that no glossary exists. See the [format and lookup guide](README.md#brainstorming-and-project-glossary). |
+| `/glossary` | Lists terms from the project's `GLOSSARY.md`, or reports that no glossary exists. See the [format and lookup guide](../README.md#brainstorming-and-project-glossary). |
 
 To send a message, select a configured model with `/model`. If needed, use `/login` to connect a supported provider. Do not paste credentials into an agent conversation. Sending a Tutor question uses the selected provider; the checks above do not require a model call.
 
-If Pi reports a missing `../shared/...` module, verify that all links point to the same checkout and that `shared` is present under the active agent directory. If commands are missing, check that `PI_CODING_AGENT_DIR` was the same for installation and launch, then reload.
+If Pi reports a missing `../shared/...` module, verify that all links point to the same `pi/` folder and that `shared` is present under the active agent directory. If commands are missing, check that `PI_CODING_AGENT_DIR` was the same for installation and launch, then reload.
 
 ## Optional extras
 
-- **Long-term memory:** Follow the [long-memory setup guide](extensions/long-memory/README.md#setup) for npm dependencies, PostgreSQL with pgvector, and Gemini credentials. After setup, `/memory` should open its dashboard. None of this is required for Tutor or task-memory.
-- **tmux wheel fallback:** If you use tmux with `set -g mouse on`, you can load `tmux-scroll.conf` to map wheel events to Page Up/Down in fullscreen apps that do not report mouse input. From this checkout, run `tmux source-file "$PWD/tmux-scroll.conf"` in a running tmux session. To keep it across restarts, add `source-file /absolute/path/to/pi-config/tmux-scroll.conf` after plugins in `~/.tmux.conf`. Do not restart or kill the tmux server just to reload it.
+- **Long-term memory:** Follow the [long-memory setup guide](../extensions/long-memory/README.md#setup) for npm dependencies, PostgreSQL with pgvector, and Gemini credentials. After setup, `/memory` should open its dashboard. None of this is required for Tutor or task-memory.
+- **tmux wheel fallback:** If you use tmux with `set -g mouse on`, you can load `tmux-scroll.conf` to map wheel events to Page Up/Down in fullscreen apps that do not report mouse input. From this checkout, run `tmux source-file "$PWD/tmux-scroll.conf"` in a running tmux session. To keep it across restarts, add `source-file /absolute/path/to/agent-config/pi/tmux-scroll.conf` after plugins in `~/.tmux.conf`. Do not restart or kill the tmux server just to reload it.
 
 ## Uninstall
 

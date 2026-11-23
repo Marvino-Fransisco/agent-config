@@ -78,7 +78,7 @@ npm test            # unit + hook tests (Pi packages stubbed), no model calls
 npm run typecheck   # tsconfig paths point at the installed Pi release
 ```
 
-To load task-memory in Pi, follow the [installation guide](../../INSTALLATION.MD#2-link-the-core-extensions-and-skill).
+To load task-memory in Pi, follow the [installation guide](../../docs/INSTALL.MD#2-link-the-core-extensions-and-skills).
 
 After a Pi upgrade, update the release path in `tsconfig.json`.
 

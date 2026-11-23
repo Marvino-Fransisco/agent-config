@@ -4,7 +4,7 @@ A separate Pi extension stores explicit global and per-checkout memories in Post
 
 ## Setup
 
-Requires Docker Compose, Node.js, and a Gemini API key. Follow the [installation guide](../../INSTALLATION.MD#2-link-the-core-extensions-and-skill) first so the `shared` link is in place. From the repository root, install dependencies and link this extension into the same Pi directory:
+Requires Docker Compose, Node.js, and a Gemini API key. Follow the [installation guide](../../docs/INSTALL.MD#2-link-the-core-extensions-and-skills) first so the `shared` link is in place. From the `pi/` folder, install dependencies and link this extension into the same Pi directory:
 
 ```sh
 npm ci --omit=dev --ignore-scripts

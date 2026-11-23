@@ -7,7 +7,7 @@ Panduan ini memakai data contoh, bukan informasi pribadi. Teks memory dan query 
 Jalankan di terminal dari root repo:
 
 ```zsh
-cd ~/Documents/work/tools/pi-config
+cd ~/Documents/work/tools/agent-config/pi
 npm install
 if [ ! -e "$HOME/.pi/agent/extensions/long-memory" ] && [ ! -L "$HOME/.pi/agent/extensions/long-memory" ]; then
   ln -s "$PWD/extensions/long-memory" "$HOME/.pi/agent/extensions/long-memory"
