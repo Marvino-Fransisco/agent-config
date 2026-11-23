@@ -22,7 +22,11 @@ unlink_owned() {
 for name in $extension_names; do
   unlink_owned "$repo/extensions/$name" "$agent_dir/extensions/$name"
 done
-for name in $skill_names; do
-  unlink_owned "$repo/skills/$name" "$agent_dir/skills/$name"
+for dst in "$agent_dir/skills/"*; do
+  name=${dst##*/}
+  src="$repo/skills/$name"
+  if [ -f "$src/SKILL.md" ] || { [ -L "$dst" ] && [ "$(readlink -n "$dst" && printf '.')" = "$src." ]; }; then
+    unlink_owned "$src" "$dst"
+  fi
 done
 exit "$status"

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 block() { echo "Blocked by block-dangerous hook: $1" >&2; exit 2; }

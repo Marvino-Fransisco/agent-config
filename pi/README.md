@@ -18,6 +18,8 @@ A collection of extensions and skills for the [Pi coding agent](https://pi.dev/)
 | [Long-term memory](extensions/long-memory/README.md) | Optional `/memory` extension for searchable global and project notes, with confirmation before writes. |
 | Undo send | Gives you a brief window to press `Esc` and return a submitted message to the editor before the agent starts. |
 
+Skills and templates are maintained in [`shared/skills/`](../shared/skills), also used by Claude Code. The shared workflows do not require Pi extensions. Pi's `brainstorming`, `domain_glossary`, and `task` tools are optional ways to track decisions, look up terms, and manage approved work. The [`shared-hook`](extensions/shared-hook/index.ts) extension runs the same pre-tool policy as Claude Code. It applies to Pi's `bash`, `read`, `edit`, and `write` tool calls (including calls routed through Pi's nested tool API), not user shell commands or independent extension tools. It is a guardrail, not a sandbox.
+
 Task memory, Tutor history, and last prompts are stored locally per Git checkout, or per session directory outside Git. Keep Tutor history and last-prompt files out of version control. Tutor uses the active model provider; optional long-term memory uses PostgreSQL and Google embeddings.
 
 ## Slash Anywhere
@@ -30,7 +32,7 @@ Slash Anywhere ships with Main UI and was tested on Pi 1.6.0. If another inline-
 
 ## Brainstorming and project glossary
 
-Start with `/skill:brainstorm <feature or change prompt>`. Pi asks clarifying questions about scope, requirements, business rules, edge cases, impact and acceptance. `/decision` opens a top-right panel with confirmed decisions, coverage (`pending`, `discussed`, or `not relevant`), and the approved brief. The panel shows the latest brainstorm on the current Pi session branch. Approving the brief does not authorize implementation. A normal brainstorm offers to draft a spec. To continue directly to drafting after brief approval, request the full flow.
+Start with `/skill:brainstorm <feature or change prompt>`. Pi asks clarifying questions about scope, requirements, business rules, edge cases, impact and acceptance. When the `brainstorming` tool tracks the session, `/decision` opens a top-right panel with confirmed decisions, coverage (`pending`, `discussed`, or `not relevant`), and the approved brief. The panel shows the latest brainstorm on the current Pi session branch. Approving the brief does not authorize implementation. A normal brainstorm offers to draft a spec. To continue directly to drafting after brief approval, request the full flow.
 
 Use `/skill:domain-modeling` to resolve domain terminology or record architecture decisions. Brainstorm uses it after the question rounds when the conversation changes the domain model or surfaces a substantial design decision.
 
@@ -53,4 +55,4 @@ Run `/glossary PO` to look up a term or alias, or `/glossary` to list names. Mai
 
 Use `/skill:spec <request>` to draft or revise a spec independently. The skill uses [SPEC-TEMPLATE.md](skills/spec/SPEC-TEMPLATE.md) and follows the project’s existing spec location, defaulting to `docs/specs/<slug>.md`. A spec-only request does not change code or task state.
 
-If you request a build, explicitly approve the written spec and proposed `/task` breakdown together. Pi then starts implementation without another confirmation, unless an unrelated task is active. `/task` can still track substantial work without either skill.
+If you request a build, explicitly approve the written spec and proposed task breakdown together. Pi then starts implementation without another confirmation, unless there is conflicting work in progress. With task memory enabled, `/task` can track the approved steps; otherwise the checklist can stay in the conversation.

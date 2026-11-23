@@ -2,6 +2,10 @@
 
 Brief: link or one line pointing to the approved brainstorm brief or request. Do not restate it.
 
+## Behavior and acceptance
+
+Agreed rules, constraints, edge cases and deferrals not already covered by the brief. Add concrete Given/When/Then examples or link to existing ones.
+
 ## Data and domain
 
 Entity, field, enum, index, and migration changes, with the file each lives in. Note backfill or compatibility needs. Omit if none.

@@ -11,7 +11,7 @@ The user intends to learn this topic over multiple sessions. If they did not pro
 
 ## Teaching Workspace
 
-Treat the current directory as a teaching workspace. Workspace paths resolve from the directory `/teach` was run in; only the `*-FORMAT.md` links resolve from this skill's folder. Read the state you need before planning a lesson:
+Treat the current directory as a teaching workspace. Workspace paths resolve from the directory where the skill was invoked; only the `*-FORMAT.md` links resolve from this skill's folder. Read the state you need before planning a lesson:
 
 - `MISSION.md`: Why the user wants to learn this topic. Use the format in [MISSION-FORMAT.md](./MISSION-FORMAT.md).
 - `./reference/*.html`: Compact, printable reference materials such as cheat sheets, algorithms, sequences, and glossaries, designed for quick lookup.

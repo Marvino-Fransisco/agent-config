@@ -22,11 +22,15 @@ function setup(t) {
 
 test("install and uninstall are repeatable and only create or remove configuration links", (t) => {
   const { agent, succeeds } = setup(t);
+  mkdirSync(join(agent, "skills"), { recursive: true });
+  symlinkSync(join(root, "skills/teach"), join(agent, "skills/teach"));
   succeeds("install");
   succeeds("install");
-  assert.deepEqual(readdirSync(join(agent, "extensions")).sort(), ["brainstorming", "prompt", "shared", "task-memory", "thinking-shortcuts", "tutor", "ui", "undo-send"]);
-  assert.deepEqual(readdirSync(join(agent, "skills")).sort(), ["brainstorm", "domain-modeling", "spec", "teach"]);
-  assert.equal(realpathSync(join(agent, "skills/spec")), join(root, "skills/spec"));
+  assert.deepEqual(readdirSync(join(agent, "extensions")).sort(), ["brainstorming", "prompt", "shared", "shared-hook", "task-memory", "thinking-shortcuts", "tutor", "ui", "undo-send"]);
+  assert.deepEqual(readdirSync(join(agent, "skills")).sort(), ["brainstorm", "debugging", "domain-modeling", "spec", "teach"]);
+  for (const name of readdirSync(join(agent, "skills"))) {
+    assert.equal(realpathSync(join(agent, "skills", name)), join(root, "../shared/skills", name));
+  }
   writeFileSync(join(agent, "settings.json"), "{}");
   succeeds("uninstall");
   succeeds("uninstall");
@@ -34,6 +38,16 @@ test("install and uninstall are repeatable and only create or remove configurati
   assert.deepEqual(readdirSync(join(agent, "skills")), []);
   assert.equal(readFileSync(join(agent, "settings.json"), "utf8"), "{}");
   assert.ok(readFileSync(join(root, "skills/spec/SKILL.md"), "utf8"));
+});
+
+test("uninstall removes owned links to retired skills and preserves unrelated skills", (t) => {
+  const { agent, succeeds } = setup(t);
+  succeeds("install");
+  const skills = join(agent, "skills");
+  symlinkSync(join(root, "skills/retired"), join(skills, "retired"));
+  mkdirSync(join(skills, "local-skill"));
+  succeeds("uninstall");
+  assert.deepEqual(readdirSync(skills), ["local-skill"]);
 });
 
 test("uninstall leaves conflicts untouched and keeps shared for separately installed long-memory", (t) => {
