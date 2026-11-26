@@ -1,12 +1,53 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1",
+    "ENABLE_LSP_TOOL": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(git reset --hard*)",
+      "Bash(git * reset --hard*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(cat *.env*)",
+      "Bash(* .env)",
+      "Bash(* .env.*)",
+      "Edit(**/.env)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
+      "Bash(rm -r -f*)",
+      "Bash(rm -f -r*)",
+      "Bash(rm * -rf*)",
+      "Bash(rm * -fr*)",
+      "Bash(sudo rm*)"
+    ],
+    "defaultMode": "auto"
+  },
   "model": "sonnet",
+  "skillOverrides": {
+    "find-skills": "off",
+    "synced": "off"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/block-dangerous.sh"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "cc-plugin-plugin-authoring@builtin": false,
     "engineering@synced": false,
     "cc-plugin-agents-md@builtin": true,
     "cc-plugin-diff@builtin": false,
     "cc-plugin-telemetry@builtin": false,
-		"typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {},
   "modelSettings": {
@@ -27,50 +68,9 @@
       }
     }
   },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1",
-    "ENABLE_LSP_TOOL": "1"
-  },
   "autoMemoryEnabled": false,
   "theme": "dark",
   "switchModelsOnFlag": false,
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true,
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Read|Edit|Write|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/block-dangerous.sh"
-          }
-        ]
-      }
-    ]
-  },
-  "permissions": {
-    "defaultMode": "auto",
-    "deny": [
-      "Bash(git reset --hard*)",
-      "Bash(git * reset --hard*)",
-      "Read(**/.env)",
-      "Read(**/.env.*)",
-      "Bash(cat *.env*)",
-      "Bash(* .env)",
-      "Bash(* .env.*)",
-      "Edit(**/.env)",
-      "Bash(rm -rf*)",
-      "Bash(rm -fr*)",
-      "Bash(rm -r -f*)",
-      "Bash(rm -f -r*)",
-      "Bash(rm * -rf*)",
-      "Bash(rm * -fr*)",
-      "Bash(sudo rm*)"
-    ]
-  },
-  "skillOverrides": {
-    "find-skills": "off",
-    "synced": "off"
-  }
+  "agentPushNotifEnabled": true
 }
