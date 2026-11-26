@@ -5,7 +5,8 @@
     "engineering@synced": false,
     "cc-plugin-agents-md@builtin": true,
     "cc-plugin-diff@builtin": false,
-    "cc-plugin-telemetry@builtin": false
+    "cc-plugin-telemetry@builtin": false,
+		"typescript-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {},
   "modelSettings": {
@@ -27,7 +28,8 @@
     }
   },
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1",
+    "ENABLE_LSP_TOOL": "1"
   },
   "autoMemoryEnabled": false,
   "theme": "dark",
